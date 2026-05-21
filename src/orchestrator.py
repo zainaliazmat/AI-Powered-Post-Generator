@@ -19,7 +19,14 @@ from .db import save_reviewed_post
 
 logger = logging.getLogger(__name__)
 
-_client = anthropic.Anthropic()
+_client: anthropic.Anthropic | None = None
+
+
+def _get_client() -> anthropic.Anthropic:
+    global _client
+    if _client is None:
+        _client = anthropic.Anthropic()
+    return _client
 
 
 def _strip_markdown_fences(text: str) -> str:
@@ -73,7 +80,7 @@ def run_review(post: dict) -> dict:
     )
 
     try:
-        resp = _client.messages.create(
+        resp = _get_client().messages.create(
             model="claude-haiku-4-5",
             max_tokens=512,
             messages=[{"role": "user", "content": prompt}],
@@ -98,7 +105,7 @@ def run_revise(post: dict, suggestions: list) -> dict:
     )
 
     try:
-        resp = _client.messages.create(
+        resp = _get_client().messages.create(
             model="claude-haiku-4-5",
             max_tokens=2048,
             messages=[{"role": "user", "content": prompt}],
