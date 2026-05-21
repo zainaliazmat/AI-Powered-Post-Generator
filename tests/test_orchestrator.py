@@ -99,3 +99,86 @@ def test_run_review_returns_score5_on_bad_json():
 
     assert result["score"] == 5
     assert "issues" in result
+
+
+def test_run_revise_returns_revised_carousel():
+    """run_revise spawns a query() call and returns a validated carousel dict."""
+    revised = {
+        "news_summary": "Revised summary",
+        "total_slides": 8,
+        "slides": [
+            {
+                "slide_number": i,
+                "title": f"Slide {i}",
+                "subtitle": "sub",
+                "body": "body",
+                "hashtags": "#tag",
+                "image_prompt": "prompt",
+            }
+            for i in range(1, 9)
+        ],
+    }
+
+    class _FakeResultMessage:
+        def __init__(self, text):
+            self.subtype = "success"
+            self.result = text
+
+    fake_msg = _FakeResultMessage(json.dumps(revised))
+
+    with patch("src.orchestrator.query") as mock_query, \
+         patch("src.orchestrator.ResultMessage", _FakeResultMessage):
+
+        mock_query.return_value = _async_gen(fake_msg)
+
+        from src.orchestrator import run_revise
+        result = asyncio.run(
+            run_revise(
+                post={"article": {}, "carousel": {}},
+                suggestions=["add urgency to slide 1"],
+            )
+        )
+
+    assert result["total_slides"] == 8
+    assert len(result["slides"]) == 8
+
+
+def test_run_revise_falls_back_to_original_on_invalid_output():
+    """run_revise returns original carousel when model output fails validation."""
+    original_carousel = {
+        "news_summary": "original",
+        "total_slides": 8,
+        "slides": [
+            {
+                "slide_number": i,
+                "title": "t",
+                "subtitle": "s",
+                "body": "b",
+                "hashtags": "#h",
+                "image_prompt": "p",
+            }
+            for i in range(1, 9)
+        ],
+    }
+
+    class _FakeResultMessage:
+        def __init__(self, text):
+            self.subtype = "success"
+            self.result = text
+
+    fake_msg = _FakeResultMessage("not json")
+
+    with patch("src.orchestrator.query") as mock_query, \
+         patch("src.orchestrator.ResultMessage", _FakeResultMessage):
+
+        mock_query.return_value = _async_gen(fake_msg)
+
+        from src.orchestrator import run_revise
+        result = asyncio.run(
+            run_revise(
+                post={"article": {}, "carousel": original_carousel},
+                suggestions=["fix it"],
+            )
+        )
+
+    assert result == original_carousel

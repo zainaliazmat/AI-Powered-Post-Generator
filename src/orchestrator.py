@@ -71,3 +71,37 @@ async def run_review(post: dict) -> dict:
     except Exception as e:
         logger.error("ReviewAgent failed: %s — defaulting to score=5", e)
         return {"score": 5, "issues": [str(e)], "suggestions": []}
+
+
+async def run_revise(post: dict, suggestions: list) -> dict:
+    """Spawn a Haiku ReviseAgent. Returns revised carousel dict or original on failure."""
+    original_carousel = post.get("carousel", {})
+
+    prompt = _REVISE_PROMPT.format(
+        carousel_json=json.dumps(original_carousel, indent=2),
+        suggestions=json.dumps(suggestions, indent=2),
+    )
+
+    result_text = ""
+    try:
+        async for msg in query(
+            prompt=prompt,
+            options=ClaudeAgentOptions(
+                model="claude-haiku-4-5",
+                effort="low",
+                max_turns=1,
+                permission_mode="dontAsk",
+            ),
+        ):
+            if isinstance(msg, ResultMessage) and msg.subtype == "success":
+                result_text = msg.result
+
+        revised = json.loads(result_text)
+        ClaudeCarouselGenerator._validate_carousel(None, revised)
+        return revised
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.warning("ReviseAgent returned invalid output: %s — keeping original", e)
+        return original_carousel
+    except Exception as e:
+        logger.error("ReviseAgent failed: %s — keeping original", e)
+        return original_carousel
