@@ -1,0 +1,32 @@
+# HTTP / scraping
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+lxml>=5.0.0
+feedparser>=6.0.10
+playwright>=1.42.0
+
+# Database — SQLite (stdlib, no package needed)
+
+# Web framework
+fastapi>=0.110.0
+jinja2>=3.1.0
+uvicorn>=0.27.0
+
+# Config
+python-dotenv>=1.0.0
+
+# Scheduling
+apscheduler>=3.10.0
+
+# Image generation (M5)
+pillow>=10.0.0
+replicate>=0.25.0
+
+# M2 — deduplication + scoring
+scikit-learn>=1.4.0
+
+# M3 — carousel generation
+anthropic>=0.26.0
+
+# M_Orchestrator — multi-agent pipeline
+claude-agent-sdk
