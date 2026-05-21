@@ -1,10 +1,20 @@
+import asyncio
 import hashlib
 import json
 import logging
+import sys
 import time
 from pathlib import Path
 
 from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, query
+from dotenv import load_dotenv
+
+# cli.py lives at project root — ensure it's importable when running from src/
+_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+
+from cli import cmd_scrape, cmd_dedup, cmd_generate  # noqa: E402  (after sys.path fix)
 
 from .carousel_gen import ClaudeCarouselGenerator
 from .db import save_reviewed_post
@@ -105,3 +115,102 @@ async def run_revise(post: dict, suggestions: list) -> dict:
     except Exception as e:
         logger.error("ReviseAgent failed: %s — keeping original", e)
         return original_carousel
+
+
+def _article_hash(article: dict) -> str:
+    content = (
+        f"{article.get('title', '')}"
+        f"{article.get('url', '')}"
+        f"{article.get('summary', '')}"
+    )
+    return hashlib.md5(content.encode(), usedforsecurity=False).hexdigest()
+
+
+async def run_pipeline(force: bool = False) -> None:
+    """Orchestrate full pipeline: scrape → dedup → generate → review → revise → save."""
+    load_dotenv()
+
+    # Step 1: Scrape
+    logger.info("Step 1/6: Scraping sources...")
+    cmd_scrape()
+    articles_path = Path("data/latest_articles.json")
+    if not articles_path.exists():
+        print("STOP: scrape failed — data/latest_articles.json not found")
+        return
+    articles = json.loads(articles_path.read_text(encoding="utf-8"))
+    if not articles:
+        print("STOP: no new articles scraped")
+        return
+    print(f"Scraped: {len(articles)}")
+
+    # Step 2: Dedup
+    logger.info("Step 2/6: Deduplicating...")
+    cmd_dedup()
+    deduped_path = Path("data/deduped_articles.json")
+    if not deduped_path.exists():
+        print("STOP: dedup failed — data/deduped_articles.json not found")
+        return
+    deduped = json.loads(deduped_path.read_text(encoding="utf-8"))
+    if not deduped:
+        print("STOP: all articles were duplicates")
+        return
+    print(f"Unique: {len(deduped)}")
+
+    # Step 3: Generate carousels
+    logger.info("Step 3/6: Generating carousels...")
+    cmd_generate(force_refresh=force)
+    posts_path = Path("data/generated_posts.json")
+    if not posts_path.exists():
+        print("STOP: generation failed — data/generated_posts.json not found")
+        return
+    posts = json.loads(posts_path.read_text(encoding="utf-8"))
+    if not posts:
+        print("STOP: no carousels generated")
+        return
+    print(f"Generated: {len(posts)}")
+
+    # Steps 4+5: Review each post, revise if score < 7
+    logger.info("Step 4-5/6: Reviewing and revising carousels...")
+    approved = []
+    for i, post in enumerate(posts):
+        title = post.get("article", {}).get("title", "")[:50]
+        logger.info("Reviewing post %d/%d: %s", i + 1, len(posts), title)
+        review = await run_review(post)
+        score = float(review.get("score", 5))
+
+        if score >= 7:
+            logger.info("  Score %.1f approved", score)
+            approved.append({"post": post, "score": score})
+        else:
+            logger.info("  Score %.1f — revising...", score)
+            revised_carousel = await run_revise(post, review.get("suggestions", []))
+            post = {**post, "carousel": revised_carousel}
+            approved.append({"post": post, "score": score})
+
+        if i < len(posts) - 1:
+            time.sleep(1)
+
+    # Step 6: Save to DB
+    logger.info("Step 6/6: Saving %d posts to database...", len(approved))
+    saved = 0
+    for item in approved:
+        post = item["post"]
+        article = post.get("article", {})
+        ok = save_reviewed_post(
+            article_hash=_article_hash(article),
+            article_url=article.get("url", ""),
+            article_title=article.get("title", ""),
+            carousel_json=post.get("carousel", {}),
+            review_score=item["score"],
+        )
+        if ok:
+            saved += 1
+
+    print(
+        f"\nPipeline complete:\n"
+        f"  Scraped  : {len(articles)}\n"
+        f"  Unique   : {len(deduped)}\n"
+        f"  Generated: {len(posts)}\n"
+        f"  Approved : {len(approved)}\n"
+        f"  Saved    : {saved}"
+    )

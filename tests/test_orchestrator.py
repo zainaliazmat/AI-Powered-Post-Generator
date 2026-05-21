@@ -182,3 +182,30 @@ def test_run_revise_falls_back_to_original_on_invalid_output():
         )
 
     assert result == original_carousel
+
+
+def test_run_pipeline_stops_early_when_no_articles(tmp_path, monkeypatch):
+    """run_pipeline exits after scrape step when latest_articles.json is empty."""
+    import src.db as db_module
+    db_module.DB_PATH = tmp_path / "test.db"
+    db_module.init_db()
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / "latest_articles.json").write_text("[]")
+
+    monkeypatch.chdir(tmp_path)
+
+    with patch("src.orchestrator.cmd_scrape"), \
+         patch("src.orchestrator.cmd_dedup"), \
+         patch("src.orchestrator.cmd_generate"):
+
+        from src.orchestrator import run_pipeline
+        import io, sys
+        captured = io.StringIO()
+        sys.stdout = captured
+        asyncio.run(run_pipeline())
+        sys.stdout = sys.__stdout__
+        output = captured.getvalue()
+
+    assert "STOP" in output
