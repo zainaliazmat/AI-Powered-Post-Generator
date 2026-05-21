@@ -12,7 +12,7 @@ def _make_response(text: str) -> MagicMock:
     return msg
 
 
-def test_save_reviewed_post_inserts_row(monkeypatch, tmp_path):
+def test_save_reviewed_post_inserts_row(tmp_path):
     """save_reviewed_post inserts a new row with review fields populated."""
     import src.db as db_module
     db_module.DB_PATH = tmp_path / "test.db"
@@ -38,7 +38,7 @@ def test_save_reviewed_post_inserts_row(monkeypatch, tmp_path):
     assert row["status"] == "pending_review"
 
 
-def test_save_reviewed_post_upserts_on_duplicate(monkeypatch, tmp_path):
+def test_save_reviewed_post_upserts_on_duplicate(tmp_path):
     """save_reviewed_post updates review_score when article_hash already exists."""
     import src.db as db_module
     db_module.DB_PATH = tmp_path / "test.db"
