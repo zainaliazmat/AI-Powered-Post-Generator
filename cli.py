@@ -278,11 +278,10 @@ def cmd_fix(key: str) -> None:
 
 
 def cmd_run(force: bool = False) -> None:
-    import asyncio
     from dotenv import load_dotenv
     load_dotenv()
     from src.orchestrator import run_pipeline
-    asyncio.run(run_pipeline(force=force))
+    run_pipeline(force=force)
 
 
 # ---------------------------------------------------------------------------
