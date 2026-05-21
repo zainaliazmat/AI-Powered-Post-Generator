@@ -21,6 +21,19 @@ from .db import save_reviewed_post
 
 logger = logging.getLogger(__name__)
 
+
+def _strip_markdown_fences(text: str) -> str:
+    """Strip ```json ... ``` or ``` ... ``` wrappers if present."""
+    text = text.strip()
+    if text.startswith("```"):
+        # remove opening fence line
+        text = text[text.index("\n") + 1:] if "\n" in text else text[3:]
+        # remove closing fence
+        if text.endswith("```"):
+            text = text[: text.rfind("```")]
+    return text.strip()
+
+
 _REVIEW_PROMPT = """\
 You are an adversarial content reviewer. Find weaknesses, not strengths.
 Return ONLY valid JSON: {{"score": <1-10>, "issues": ["..."], "suggestions": ["..."]}}
@@ -74,7 +87,7 @@ async def run_review(post: dict) -> dict:
         ):
             if isinstance(msg, ResultMessage) and msg.subtype == "success":
                 result_text = msg.result
-        return json.loads(result_text)
+        return json.loads(_strip_markdown_fences(result_text))
     except (json.JSONDecodeError, ValueError) as e:
         logger.warning("ReviewAgent returned non-JSON: %s — defaulting to score=5", e)
         return {"score": 5, "issues": ["parse error"], "suggestions": []}
@@ -106,7 +119,7 @@ async def run_revise(post: dict, suggestions: list) -> dict:
             if isinstance(msg, ResultMessage) and msg.subtype == "success":
                 result_text = msg.result
 
-        revised = json.loads(result_text)
+        revised = json.loads(_strip_markdown_fences(result_text))
         ClaudeCarouselGenerator._validate_carousel(None, revised)
         return revised
     except (json.JSONDecodeError, ValueError) as e:
