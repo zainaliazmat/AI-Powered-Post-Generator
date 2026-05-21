@@ -1,11 +1,15 @@
-import asyncio
 import json
-import sqlite3
-import tempfile
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
+
+
+def _make_response(text: str) -> MagicMock:
+    """Create a mock anthropic.messages.create response with .content[0].text."""
+    msg = MagicMock()
+    msg.content = [MagicMock(text=text)]
+    return msg
 
 
 def test_save_reviewed_post_inserts_row(monkeypatch, tmp_path):
@@ -34,46 +38,37 @@ def test_save_reviewed_post_inserts_row(monkeypatch, tmp_path):
     assert row["status"] == "pending_review"
 
 
-def test_save_reviewed_post_skips_duplicate(monkeypatch, tmp_path):
-    """save_reviewed_post returns False when article_hash already exists."""
+def test_save_reviewed_post_upserts_on_duplicate(monkeypatch, tmp_path):
+    """save_reviewed_post updates review_score when article_hash already exists."""
     import src.db as db_module
     db_module.DB_PATH = tmp_path / "test.db"
     db_module.init_db()
 
     from src.db import save_reviewed_post
     save_reviewed_post("dup", "https://x.com", "Title", {}, 7.0)
-    ok = save_reviewed_post("dup", "https://x.com", "Title", {}, 7.0)
-    assert ok is False
+    ok = save_reviewed_post("dup", "https://x.com", "Title", {}, 9.0)
+    assert ok is True
 
-
-async def _async_gen(*items):
-    for item in items:
-        yield item
+    with db_module.get_conn() as conn:
+        row = conn.execute(
+            "SELECT review_score FROM generated_posts WHERE article_hash = 'dup'"
+        ).fetchone()
+    assert row["review_score"] == 9.0
 
 
 def test_run_review_returns_parsed_dict():
-    """run_review spawns a query() call and parses the JSON result."""
+    """run_review calls messages.create and parses the JSON result."""
     review_json = '{"score": 8, "issues": ["weak CTA"], "suggestions": ["add urgency"]}'
 
-    # Use a real class as the ResultMessage sentinel so isinstance() works correctly.
-    class _FakeResultMessage:
-        def __init__(self, text):
-            self.subtype = "success"
-            self.result = text
-
-    fake_msg = _FakeResultMessage(review_json)
-
-    with patch("src.orchestrator.query") as mock_query, \
-         patch("src.orchestrator.ResultMessage", _FakeResultMessage):
-
-        mock_query.return_value = _async_gen(fake_msg)
+    with patch("src.orchestrator._client") as mock_client:
+        mock_client.messages.create.return_value = _make_response(review_json)
 
         from src.orchestrator import run_review
         post = {
             "article": {"title": "Test", "summary": "Summary"},
             "carousel": {"news_summary": "x", "total_slides": 8, "slides": []},
         }
-        result = asyncio.run(run_review(post))
+        result = run_review(post)
 
     assert result["score"] == 8
     assert result["issues"] == ["weak CTA"]
@@ -82,27 +77,18 @@ def test_run_review_returns_parsed_dict():
 
 def test_run_review_returns_score5_on_bad_json():
     """run_review returns score=5 when the model returns non-JSON."""
-    class _FakeResultMessage:
-        def __init__(self, text):
-            self.subtype = "success"
-            self.result = text
-
-    fake_msg = _FakeResultMessage("not json at all")
-
-    with patch("src.orchestrator.query") as mock_query, \
-         patch("src.orchestrator.ResultMessage", _FakeResultMessage):
-
-        mock_query.return_value = _async_gen(fake_msg)
+    with patch("src.orchestrator._client") as mock_client:
+        mock_client.messages.create.return_value = _make_response("not json at all")
 
         from src.orchestrator import run_review
-        result = asyncio.run(run_review({"article": {}, "carousel": {}}))
+        result = run_review({"article": {}, "carousel": {}})
 
     assert result["score"] == 5
     assert "issues" in result
 
 
 def test_run_revise_returns_revised_carousel():
-    """run_revise spawns a query() call and returns a validated carousel dict."""
+    """run_revise calls messages.create and returns a validated carousel dict."""
     revised = {
         "news_summary": "Revised summary",
         "total_slides": 8,
@@ -119,24 +105,13 @@ def test_run_revise_returns_revised_carousel():
         ],
     }
 
-    class _FakeResultMessage:
-        def __init__(self, text):
-            self.subtype = "success"
-            self.result = text
-
-    fake_msg = _FakeResultMessage(json.dumps(revised))
-
-    with patch("src.orchestrator.query") as mock_query, \
-         patch("src.orchestrator.ResultMessage", _FakeResultMessage):
-
-        mock_query.return_value = _async_gen(fake_msg)
+    with patch("src.orchestrator._client") as mock_client:
+        mock_client.messages.create.return_value = _make_response(json.dumps(revised))
 
         from src.orchestrator import run_revise
-        result = asyncio.run(
-            run_revise(
-                post={"article": {}, "carousel": {}},
-                suggestions=["add urgency to slide 1"],
-            )
+        result = run_revise(
+            post={"article": {}, "carousel": {}},
+            suggestions=["add urgency to slide 1"],
         )
 
     assert result["total_slides"] == 8
@@ -161,24 +136,13 @@ def test_run_revise_falls_back_to_original_on_invalid_output():
         ],
     }
 
-    class _FakeResultMessage:
-        def __init__(self, text):
-            self.subtype = "success"
-            self.result = text
-
-    fake_msg = _FakeResultMessage("not json")
-
-    with patch("src.orchestrator.query") as mock_query, \
-         patch("src.orchestrator.ResultMessage", _FakeResultMessage):
-
-        mock_query.return_value = _async_gen(fake_msg)
+    with patch("src.orchestrator._client") as mock_client:
+        mock_client.messages.create.return_value = _make_response("not json")
 
         from src.orchestrator import run_revise
-        result = asyncio.run(
-            run_revise(
-                post={"article": {}, "carousel": original_carousel},
-                suggestions=["fix it"],
-            )
+        result = run_revise(
+            post={"article": {}, "carousel": original_carousel},
+            suggestions=["fix it"],
         )
 
     assert result == original_carousel
@@ -204,7 +168,7 @@ def test_run_pipeline_stops_early_when_no_articles(tmp_path, monkeypatch):
         import io, sys
         captured = io.StringIO()
         sys.stdout = captured
-        asyncio.run(run_pipeline())
+        run_pipeline()
         sys.stdout = sys.__stdout__
         output = captured.getvalue()
 
