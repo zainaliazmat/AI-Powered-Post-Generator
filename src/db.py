@@ -224,6 +224,36 @@ def save_generated_post(
         return False
 
 
+def save_reviewed_post(
+    article_hash: str,
+    article_url: str,
+    article_title: str,
+    carousel_json: dict,
+    review_score: float,
+) -> bool:
+    """Insert a reviewed post. Returns False if article_hash already exists."""
+    try:
+        with get_conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO generated_posts
+                    (article_hash, article_url, article_title, carousel_json,
+                     review_score, reviewed, status)
+                VALUES (?, ?, ?, ?, ?, 1, 'pending_review')
+                """,
+                (
+                    article_hash,
+                    article_url,
+                    article_title,
+                    json.dumps(carousel_json),
+                    review_score,
+                ),
+            )
+        return True
+    except sqlite3.IntegrityError:
+        return False
+
+
 def get_pending_posts() -> list[dict]:
     with get_conn() as conn:
         rows = conn.execute(
