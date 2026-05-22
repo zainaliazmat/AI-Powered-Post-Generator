@@ -1,11 +1,12 @@
 import hashlib
 import json
 import logging
+import os
 import re
 import time
 from pathlib import Path
 
-import anthropic
+import litellm
 
 logger = logging.getLogger(__name__)
 
@@ -24,20 +25,26 @@ _SYSTEM = (
 )
 
 _PROMPT_TEMPLATE = """\
-You are an expert social media content strategist specializing in AI/tech news.
-Convert this news into an engaging Instagram carousel.
+You are an expert social media strategist. Convert this news into an Instagram carousel.
 
 ## NEWS:
 Title: {title}
 Source: {source}
-Date: {date}
-Categories: {categories}
 Summary: {summary}
+
+## SLIDE BUDGET (CRITICAL — choose based on content):
+- Complex/breaking news (major release, technical deep dive, comparison) → EXACTLY 6 slides
+- Standard news (normal feature, regular update) → 4 or 5 slides
+- Minor/small news (quick tip, minor release, simple announcement) → 2 or 3 slides
+
+DO NOT ADD FILLER SLIDES. Every slide must deliver unique value.
+MAXIMUM 6 SLIDES. MINIMUM 2 SLIDES.
 
 ## OUTPUT FORMAT (MUST BE VALID JSON — NO OTHER TEXT):
 {{
+  "brand_domain": "nvidia.com",
   "news_summary": "One powerful sentence summarizing the biggest takeaway",
-  "total_slides": 8,
+  "total_slides": <2-6>,
   "slides": [
     {{
       "slide_number": 1,
@@ -50,18 +57,34 @@ Summary: {summary}
   ]
 }}
 
-## SLIDE GUIDELINES:
-- Slide 1: Hook + biggest headline
-- Slides 2-3: Break down the story with data/numbers
-- Slides 4-5: Second angle or implications
-- Slides 6-7: Technical details simplified or future predictions
-- Slide 8: CTA + recap + question for comments ("Which excites you most? 👇")
+## SLIDE STRUCTURE:
+- Slide 1: Hook + headline (always required)
+- Slides 2 to N-1: Core content, vary depth by complexity
+- Slide N: CTA + recap + question for comments (always required)
 
 ## WRITING RULES:
-- Max 2 emojis per slide (🔥 🚀 💡 🤖 💰 📡 as relevant)
+- Max 2 emojis per slide
 - Sentences under 15 words
-- Create urgency/FOMO
 - Write like a knowledgeable friend, not corporate
+
+## BRAND EXTRACTION RULES:
+Identify the SINGLE most relevant company this article focuses on.
+
+Rules:
+- If article announces something by one company → use that company's primary domain
+- For subsidiaries, use the parent company domain
+  (e.g. "Google DeepMind" → "google.com", "Microsoft GitHub Copilot" → "microsoft.com")
+- If two companies are equally featured (e.g. "NVIDIA and AMD partner") → set null
+- If article is about a person, technology, or concept with no clear company → set null
+- Use the company's primary .com domain (not regional, not product-specific)
+
+Examples:
+"OpenAI releases GPT-5" → "openai.com"
+"Microsoft GitHub Copilot update" → "microsoft.com"
+"Jensen Huang keynote at GTC" → "nvidia.com"
+"Python 3.13 released" → null
+
+Add "brand_domain" as a top-level field in your JSON output (string or null).
 
 ## CRITICAL: Return ONLY valid JSON. Start with {{ and end with }}."""
 
@@ -69,12 +92,10 @@ Summary: {summary}
 class ClaudeCarouselGenerator:
     def __init__(
         self,
-        api_key: str,
         cache_dir: str = "carousel_cache",
         max_retries: int = 3,
     ):
-        self.client = anthropic.Anthropic(api_key=api_key)
-        self.model = "claude-haiku-4-5"
+        self.model = os.getenv("CAROUSEL_MODEL", "claude-haiku-4-5")
         self.cache_dir = Path(cache_dir)
         self.max_retries = max_retries
         self.cache_dir.mkdir(exist_ok=True)
@@ -86,7 +107,7 @@ class ClaudeCarouselGenerator:
         }
 
     def _cache_key(self, article: dict) -> str:
-        content = f"{article.get('title','')}{article.get('url','')}{article.get('summary','')}"
+        content = f"v2|{article.get('title','')}{article.get('url','')}{article.get('summary','')}"
         return hashlib.md5(content.encode(), usedforsecurity=False).hexdigest()
 
     def _load_cache(self, key: str) -> dict | None:
@@ -112,39 +133,30 @@ class ClaudeCarouselGenerator:
         )
 
     def _call_api(self, prompt: str) -> str:
-        last_err = None
-        for attempt in range(self.max_retries):
+        try:
+            resp = litellm.completion(
+                model=self.model,
+                max_tokens=2048,
+                messages=[
+                    {"role": "system", "content": _SYSTEM},
+                    {"role": "user", "content": prompt},
+                ],
+                num_retries=self.max_retries,
+                timeout=30,
+            )
+            self.usage_stats["total_calls"] += 1
+            self.usage_stats["total_input_tokens"] += resp.usage.prompt_tokens
+            self.usage_stats["total_output_tokens"] += resp.usage.completion_tokens
             try:
-                resp = self.client.messages.create(
-                    model=self.model,
-                    max_tokens=2048,
-                    system=_SYSTEM,
-                    messages=[{"role": "user", "content": prompt}],
+                self.usage_stats["estimated_cost_usd"] += litellm.completion_cost(
+                    completion_response=resp
                 )
-                self.usage_stats["total_calls"] += 1
-                self.usage_stats["total_input_tokens"] += resp.usage.input_tokens
-                self.usage_stats["total_output_tokens"] += resp.usage.output_tokens
-                self.usage_stats["estimated_cost_usd"] += (
-                    resp.usage.input_tokens / 1_000_000 * 1.0
-                    + resp.usage.output_tokens / 1_000_000 * 5.0
-                )
-                return resp.content[0].text
-            except anthropic.RateLimitError as e:
-                last_err = e
-                wait = 2 ** attempt
-                logger.warning("Rate limited — waiting %ds (attempt %d/%d)", wait, attempt + 1, self.max_retries)
-                time.sleep(wait)
-            except anthropic.APIStatusError as e:
-                if e.status_code < 500:
-                    raise
-                last_err = e
-                logger.warning("API server error %d: %s — retrying", e.status_code, e)
-                time.sleep(2 ** attempt)
-            except anthropic.APIError as e:
-                last_err = e
-                logger.warning("API error: %s — retrying", e)
-                time.sleep(2 ** attempt)
-        raise RuntimeError(f"Claude API failed after {self.max_retries} attempts: {last_err}")
+            except Exception:
+                pass
+            return resp.choices[0].message.content
+        except Exception as e:
+            logger.error("LLM API failed: %s", e)
+            raise
 
     def _extract_json(self, text: str) -> dict:
         text = text.strip()
@@ -161,13 +173,21 @@ class ClaudeCarouselGenerator:
                     continue
         raise ValueError(f"Could not extract JSON from response: {text[:200]}")
 
-    def _validate_carousel(self, carousel: dict) -> None:
+    @staticmethod
+    def _validate_carousel(carousel: dict) -> None:
         for field in ("news_summary", "total_slides", "slides"):
             if field not in carousel:
                 raise ValueError(f"Carousel missing required field: {field}")
-        if len(carousel["slides"]) != 8:
-            raise ValueError(f"Expected 8 slides, got {len(carousel['slides'])}")
-        for slide in carousel["slides"]:
+        total = carousel["total_slides"]
+        if not isinstance(total, int) or not (2 <= total <= 6):
+            raise ValueError(f"total_slides must be an integer 2-6, got {total!r}")
+        slides = carousel["slides"]
+        if len(slides) != total:
+            raise ValueError(f"Expected {total} slides, got {len(slides)}")
+        numbers = [s.get("slide_number") for s in slides]
+        if numbers != list(range(1, total + 1)):
+            raise ValueError(f"slide_numbers must be 1..{total} in order, got {numbers}")
+        for slide in slides:
             for field in _SLIDE_FIELDS:
                 if field not in slide:
                     raise ValueError(f"Slide {slide.get('slide_number','?')} missing field: {field}")

@@ -64,6 +64,7 @@ def init_db() -> None:
             );
         """)
     migrate_review_columns()
+    migrate_image_columns()
 
 
 def migrate_review_columns() -> None:
@@ -83,6 +84,20 @@ def migrate_review_columns() -> None:
                 "ALTER TABLE generated_posts ADD COLUMN reviewed INTEGER DEFAULT 0"
             )
             logger.info("Added reviewed column to generated_posts")
+
+
+def migrate_image_columns() -> None:
+    """Add image_paths column if it doesn't exist. Safe to call repeatedly."""
+    with get_conn() as conn:
+        existing = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(generated_posts)").fetchall()
+        }
+        if "image_paths" not in existing:
+            conn.execute(
+                "ALTER TABLE generated_posts ADD COLUMN image_paths TEXT"
+            )
+            logger.info("Added image_paths column to generated_posts")
 
 
 # ---------------------------------------------------------------------------
@@ -231,27 +246,28 @@ def save_reviewed_post(
     carousel_json: dict,
     review_score: float,
 ) -> bool:
-    """Insert a reviewed post. Returns False if article_hash already exists."""
-    try:
-        with get_conn() as conn:
-            conn.execute(
-                """
-                INSERT INTO generated_posts
-                    (article_hash, article_url, article_title, carousel_json,
-                     review_score, reviewed, status)
-                VALUES (?, ?, ?, ?, ?, 1, 'pending_review')
-                """,
-                (
-                    article_hash,
-                    article_url,
-                    article_title,
-                    json.dumps(carousel_json),
-                    review_score,
-                ),
-            )
-        return True
-    except sqlite3.IntegrityError:
-        return False
+    """Insert or update a reviewed post. Always returns True."""
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO generated_posts
+                (article_hash, article_url, article_title, carousel_json,
+                 review_score, reviewed, status)
+            VALUES (?, ?, ?, ?, ?, 1, 'pending_review')
+            ON CONFLICT(article_hash) DO UPDATE SET
+                carousel_json = excluded.carousel_json,
+                review_score  = excluded.review_score,
+                reviewed      = 1
+            """,
+            (
+                article_hash,
+                article_url,
+                article_title,
+                json.dumps(carousel_json),
+                review_score,
+            ),
+        )
+    return True
 
 
 def get_pending_posts() -> list[dict]:
@@ -260,6 +276,16 @@ def get_pending_posts() -> list[dict]:
             "SELECT * FROM generated_posts WHERE status = 'pending_review' ORDER BY created_at DESC"
         ).fetchall()
         return [dict(r) for r in rows]
+
+
+def save_image_paths(post_id: int, image_paths: list[str]) -> bool:
+    """Set image_paths and mark post as image_ready. Returns True always."""
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE generated_posts SET image_paths = ?, status = 'image_ready' WHERE id = ?",
+            (json.dumps(image_paths), post_id),
+        )
+    return True
 
 
 # ---------------------------------------------------------------------------

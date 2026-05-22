@@ -210,14 +210,8 @@ def cmd_dedup() -> None:
 
 
 def cmd_generate(force_refresh: bool = False) -> None:
-    import os
     from src.carousel_gen import ClaudeCarouselGenerator
     from src.db import save_generated_post
-
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        print("ANTHROPIC_API_KEY not set in .env — cannot generate carousels.")
-        sys.exit(1)
 
     in_path = Path("data/deduped_articles.json")
     if not in_path.exists():
@@ -227,7 +221,7 @@ def cmd_generate(force_refresh: bool = False) -> None:
     articles = json.loads(in_path.read_text(encoding="utf-8"))
     print(f"Loaded {len(articles)} articles from {in_path}")
 
-    gen = ClaudeCarouselGenerator(api_key=api_key)
+    gen = ClaudeCarouselGenerator()
     results = gen.batch_generate(articles, force_refresh=force_refresh)
 
     saved, skipped, failed = 0, 0, 0
@@ -277,6 +271,38 @@ def cmd_fix(key: str) -> None:
         print(f"Source '{key}' not found in crashed list. Run --crashed to see what's there.")
 
 
+def cmd_images(post_id: int) -> None:
+    from src.db import get_conn, save_image_paths
+    from src.image_gen import generate_for_post
+
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, carousel_json, status FROM generated_posts WHERE id = ?",
+            (post_id,),
+        ).fetchone()
+
+    if not row:
+        print(f"Post {post_id} not found in DB.")
+        return
+
+    carousel = json.loads(row["carousel_json"])
+    brand_domain = carousel.get("brand_domain")
+
+    print(f"Generating images for post {post_id} (brand: {brand_domain or 'none'})...")
+    paths = generate_for_post(
+        post_id=post_id,
+        carousel=carousel,
+        brand_domain=brand_domain,
+    )
+
+    str_paths = [str(p) for p in paths]
+    save_image_paths(post_id, str_paths)
+
+    print(f"\nGenerated {len(paths)} image(s):")
+    for p in str_paths:
+        print(f"  {p}")
+
+
 def cmd_run(force: bool = False) -> None:
     from dotenv import load_dotenv
     load_dotenv()
@@ -314,6 +340,7 @@ def main() -> None:
     parser.add_argument("--crashed", action="store_true", help="List crashed/broken sources")
     parser.add_argument("--fix",     type=str,            metavar="KEY", help="Restore a crashed source to the active list")
     parser.add_argument("--source",  type=str,            help="Test-fetch a single source (prints, no JSON)")
+    parser.add_argument("--images",  type=int,            metavar="POST_ID", help="Generate images for a post by DB id")
     parser.add_argument("--verbose", action="store_true", help="Enable DEBUG logging")
     args = parser.parse_args()
 
@@ -342,6 +369,10 @@ def main() -> None:
         cmd_fix(args.fix)
     elif args.source:
         cmd_source(args.source)
+    elif args.images:
+        from dotenv import load_dotenv
+        load_dotenv()
+        cmd_images(args.images)
     else:
         parser.print_help()
 
