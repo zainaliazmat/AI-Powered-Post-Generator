@@ -28,5 +28,7 @@ scikit-learn>=1.4.0
 # M3 — carousel generation
 anthropic>=0.26.0
 
-# M_Orchestrator — multi-agent pipeline
-claude-agent-sdk
+# M_Orchestrator — pipeline orchestration + provider-agnostic LLM
+langgraph
+langgraph-checkpoint-sqlite
+litellm
