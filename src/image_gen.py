@@ -1,4 +1,5 @@
 import logging
+import time
 import urllib.request
 from pathlib import Path
 
@@ -43,7 +44,7 @@ def generate_for_slide(post_id: int, slide: dict, brand_domain: str | None) -> P
                 "num_outputs": 1,
             },
         )
-        image_url = output[0]
+        image_url = str(output[0])
         dest = _image_path(post_id, slide["slide_number"])
         urllib.request.urlretrieve(image_url, dest)
 
@@ -61,9 +62,14 @@ def generate_for_slide(post_id: int, slide: dict, brand_domain: str | None) -> P
         return _pillow_text_card(post_id, slide)
 
 
+_REPLICATE_RATE_LIMIT_SLEEP = 11  # seconds; Replicate low-credit tier: 6 req/min burst=1
+
+
 def generate_for_post(post_id: int, carousel: dict, brand_domain: str | None) -> list[Path]:
     paths = []
-    for slide in carousel.get("slides", []):
+    for i, slide in enumerate(carousel.get("slides", [])):
+        if i > 0:
+            time.sleep(_REPLICATE_RATE_LIMIT_SLEEP)
         path = generate_for_slide(post_id, slide, brand_domain)
         paths.append(path)
     return paths

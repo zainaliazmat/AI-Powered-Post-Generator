@@ -12,6 +12,9 @@ Usage:
     python cli.py --crashed                      # list crashed/broken sources
     python cli.py --fix <key>                    # restore a crashed source to the active list
     python cli.py --source <key>                 # test-fetch a single source (prints, no JSON)
+    python cli.py --tables                        # list all DB tables with row counts
+    python cli.py --posts                         # list all generated posts (status, score, images)
+    python cli.py --db-images                     # list posts that have generated images
 """
 
 import argparse
@@ -303,6 +306,75 @@ def cmd_images(post_id: int) -> None:
         print(f"  {p}")
 
 
+def cmd_tables() -> None:
+    from src.db import get_conn
+
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+        ).fetchall()
+
+    if not rows:
+        print("No tables found in data/pipeline.db")
+        return
+
+    print(f"\nTables in data/pipeline.db ({len(rows)} total):")
+    print("─" * 40)
+    for r in rows:
+        count = 0
+        with get_conn() as conn:
+            count = conn.execute(f"SELECT COUNT(*) FROM [{r['name']}]").fetchone()[0]
+        print(f"  {r['name']:<30} {count} rows")
+
+
+def cmd_posts() -> None:
+    from src.db import get_conn
+
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, status, review_score, image_paths, created_at, article_title "
+            "FROM generated_posts ORDER BY id DESC"
+        ).fetchall()
+
+    if not rows:
+        print("No generated posts in DB.")
+        return
+
+    print(f"\n{'ID':<6} {'Status':<14} {'Score':<7} {'Imgs':<6} {'Created':<22} Title")
+    print("─" * 100)
+    for r in rows:
+        score = f"{r['review_score']:.1f}" if r["review_score"] is not None else "—"
+        imgs = len(json.loads(r["image_paths"])) if r["image_paths"] else 0
+        created = (r["created_at"] or "")[:19].replace("T", " ")
+        title = (r["article_title"] or "")[:48]
+        print(f"  {r['id']:<4} {r['status']:<14} {score:<7} {imgs:<6} {created:<22} {title}")
+    print(f"\n  {len(rows)} post(s) total.")
+
+
+def cmd_db_images() -> None:
+    from src.db import get_conn
+
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, article_title, status, image_paths "
+            "FROM generated_posts WHERE image_paths IS NOT NULL ORDER BY id DESC"
+        ).fetchall()
+
+    if not rows:
+        print("No posts with images in DB.")
+        return
+
+    print(f"\n{'ID':<6} {'Status':<14} {'Images':<6} Title")
+    print("─" * 90)
+    for r in rows:
+        paths = json.loads(r["image_paths"])
+        title = (r["article_title"] or "")[:50]
+        print(f"  {r['id']:<4} {r['status']:<14} {len(paths):<6} {title}")
+        for p in paths:
+            print(f"         {p}")
+    print(f"\n  {len(rows)} post(s) with images.")
+
+
 def cmd_run(force: bool = False) -> None:
     from dotenv import load_dotenv
     load_dotenv()
@@ -340,8 +412,11 @@ def main() -> None:
     parser.add_argument("--crashed", action="store_true", help="List crashed/broken sources")
     parser.add_argument("--fix",     type=str,            metavar="KEY", help="Restore a crashed source to the active list")
     parser.add_argument("--source",  type=str,            help="Test-fetch a single source (prints, no JSON)")
-    parser.add_argument("--images",  type=int,            metavar="POST_ID", help="Generate images for a post by DB id")
-    parser.add_argument("--verbose", action="store_true", help="Enable DEBUG logging")
+    parser.add_argument("--images",    type=int,            metavar="POST_ID", help="Generate images for a post by DB id")
+    parser.add_argument("--tables",    action="store_true", help="List all tables in data/pipeline.db with row counts")
+    parser.add_argument("--posts",     action="store_true", help="List all generated posts with status, score, and image count")
+    parser.add_argument("--db-images", action="store_true", help="List all posts that have generated images in DB")
+    parser.add_argument("--verbose",   action="store_true", help="Enable DEBUG logging")
     args = parser.parse_args()
 
     setup_logging(args.verbose)
@@ -373,6 +448,12 @@ def main() -> None:
         from dotenv import load_dotenv
         load_dotenv()
         cmd_images(args.images)
+    elif args.tables:
+        cmd_tables()
+    elif args.posts:
+        cmd_posts()
+    elif args.db_images:
+        cmd_db_images()
     else:
         parser.print_help()
 

@@ -1,4 +1,5 @@
 import logging
+import os
 import re
 import time
 from pathlib import Path
@@ -66,19 +67,19 @@ _DEFAULT_STYLE = "corporate tech brand, professional photography style, clean ba
 
 
 def _download_logo(domain: str, dest: Path) -> bool:
+    token = os.getenv("LOGO_DEV_TOKEN", "")
+    url = f"https://img.logo.dev/{domain}?format=png&size=80"
+    if token:
+        url += f"&token={token}"
     try:
-        resp = requests.get(
-            f"https://logo.clearbit.com/{domain}",
-            timeout=5,
-            headers={"User-Agent": "Mozilla/5.0"},
-        )
+        resp = requests.get(url, timeout=5, headers={"User-Agent": "Mozilla/5.0"})
         if resp.status_code == 200:
             dest.write_bytes(resp.content)
             return True
-        logger.warning("Clearbit returned %d for %s", resp.status_code, domain)
+        logger.warning("Logo.dev returned %d for %s", resp.status_code, domain)
         return False
     except Exception as e:
-        logger.warning("Clearbit fetch failed for %s: %s", domain, e)
+        logger.warning("Logo.dev fetch failed for %s: %s", domain, e)
         return False
 
 
