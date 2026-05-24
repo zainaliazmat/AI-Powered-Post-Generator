@@ -1,0 +1,13 @@
+<p class="db-modal-title">Delete row #{{ row_id }}?</p>
+<p class="db-modal-warning">{{ warning.message }}</p>
+<div class="db-modal-actions">
+  <button
+    hx-delete="/database/{{ table }}/{{ row_id }}"
+    hx-target="#db-row-{{ row_id }}"
+    hx-swap="outerHTML"
+    onclick="document.getElementById('db-delete-modal').classList.add('db-modal-hidden')"
+    class="btn btn-danger btn-sm">Yes, delete</button>
+  <button
+    onclick="document.getElementById('db-delete-modal').classList.add('db-modal-hidden')"
+    class="btn btn-secondary btn-sm">Cancel</button>
+</div>

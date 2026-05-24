@@ -1,0 +1,66 @@
+<script>
+  (function() {
+    var p = document.getElementById('db-panel');
+    p.classList.remove('db-panel-closed');
+    p.classList.add('db-panel-open');
+  })();
+</script>
+
+<div class="db-panel-header">
+  <span class="db-panel-title">
+    {% if mode == 'create' %}New row — {{ table }}{% else %}Edit row #{{ row.id }} — {{ table }}{% endif %}
+  </span>
+  <button type="button" class="db-panel-close"
+          onclick="(function(){ var p=document.getElementById('db-panel'); p.classList.remove('db-panel-open'); p.classList.add('db-panel-closed'); })()">✕</button>
+</div>
+
+{% if error %}
+<div class="db-panel-error">{{ error }}</div>
+{% endif %}
+
+<form
+  {% if mode == 'create' %}
+    hx-post="/database/{{ table }}"
+  {% else %}
+    hx-put="/database/{{ table }}/{{ row.id }}"
+  {% endif %}
+  hx-target="#db-panel"
+  hx-swap="innerHTML"
+  hx-on::after-request="if(event.detail.successful){ var p=document.getElementById('db-panel'); p.classList.remove('db-panel-open'); p.classList.add('db-panel-closed'); }"
+  class="db-panel-form">
+
+  {% for col in columns %}
+  <div class="db-field">
+    <label class="db-label">
+      {{ col.name }}
+      {% if col.notnull and col.name != 'id' %}<span class="db-required">*</span>{% endif %}
+    </label>
+
+    {% set val = row.get(col.name) %}
+    {% if val is none %}{% set val = '' %}{% endif %}
+
+    {% if col.name == 'id' %}
+      <input type="text" value="{{ val }}" disabled class="db-input db-input-disabled">
+
+    {% elif col.name == 'status' and table == 'generated_posts' %}
+      <select name="{{ col.name }}" class="db-input">
+        {% for s in ['pending_review', 'image_ready', 'approved', 'rejected', 'published', 'failed'] %}
+        <option value="{{ s }}"{% if val == s %} selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+
+    {% elif val | string | length > 100 or (val | string)[:1] in ('{', '[') %}
+      <textarea name="{{ col.name }}" rows="6" class="db-input db-textarea">{{ val }}</textarea>
+
+    {% else %}
+      <input type="text" name="{{ col.name }}" value="{{ val }}" class="db-input">
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  <div class="db-panel-actions">
+    <button type="submit" class="btn btn-primary">Save</button>
+    <button type="button" class="btn btn-secondary"
+            onclick="(function(){ var p=document.getElementById('db-panel'); p.classList.remove('db-panel-open'); p.classList.add('db-panel-closed'); })()">Cancel</button>
+  </div>
+</form>

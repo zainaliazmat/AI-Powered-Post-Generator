@@ -1,0 +1,59 @@
+{% set active = 'dashboard' %}
+{% extends "base.html" %}
+{% block title %}Dashboard — InstaBot{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h2 class="page-title">Dashboard</h2>
+</div>
+
+<div class="stats-grid">
+  <div class="stat-card stat-pending">
+    <span class="stat-value">{{ counts.pending_review + counts.image_ready }}</span>
+    <span class="stat-label">Pending Review</span>
+  </div>
+  <div class="stat-card stat-approved">
+    <span class="stat-value">{{ counts.approved }}</span>
+    <span class="stat-label">Approved</span>
+  </div>
+  <div class="stat-card stat-rejected">
+    <span class="stat-value">{{ counts.rejected }}</span>
+    <span class="stat-label">Rejected</span>
+  </div>
+  <div class="stat-card stat-total">
+    <span class="stat-value">{{ counts.total }}</span>
+    <span class="stat-label">Total Posts</span>
+  </div>
+</div>
+
+{% include "_pipeline_card.html" %}
+
+<div class="health-strip">
+  <div class="health-item">
+    <span class="health-label">Last generation</span>
+    <span class="health-value">{{ last_generated or "—" }}</span>
+  </div>
+  <div class="health-item">
+    <span class="health-label">Crashed sources</span>
+    <span class="health-value">{% if crashed_count %}{{ crashed_count }} need fixing{% else %}None{% endif %}</span>
+  </div>
+  <div class="health-item">
+    <span class="health-label">Avg score</span>
+    <span class="health-value">{{ avg_score or "—" }}</span>
+  </div>
+  <div class="health-item">
+    <span class="health-label">Next publish</span>
+    <span class="health-value">Not scheduled (M7)</span>
+  </div>
+</div>
+
+{% set pending_total = counts.pending_review + counts.image_ready %}
+{% if pending_total > 0 %}
+  <a href="/review" class="btn btn-primary">
+    Review Queue — {{ pending_total }} post{{ 's' if pending_total != 1 }} waiting →
+  </a>
+{% else %}
+  <p class="page-subtitle">No posts pending review.</p>
+{% endif %}
+
+{% endblock %}

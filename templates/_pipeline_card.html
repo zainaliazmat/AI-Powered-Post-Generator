@@ -1,0 +1,126 @@
+{# Pipeline status card. Polled every 2s while a run is active. #}
+{% set status = run.status if run else None %}
+{% set is_running = status == "running" %}
+{% set finished = status and not is_running %}
+
+{% set status_subtitle = {
+    "ok":        "Completed",
+    "stopped":   "Stopped",
+    "cancelled": "Cancelled by user",
+    "failed":    "Failed",
+} %}
+
+<div id="pipeline-card" class="pipeline-card"
+     {% if is_running %}
+     hx-get="/pipeline/status"
+     hx-trigger="every 2s"
+     hx-swap="outerHTML"
+     {% endif %}>
+
+  <div class="pipeline-card-head">
+    <h3 class="pipeline-card-title">Pipeline</h3>
+    <div class="pipeline-card-actions">
+      <button type="button"
+              class="btn btn-primary btn-sm"
+              hx-post="/pipeline/start"
+              hx-target="#pipeline-card"
+              hx-swap="outerHTML"
+              hx-disabled-elt="this"
+              {% if is_running %}disabled{% endif %}>
+        ▶ Start
+      </button>
+      {% if is_running %}
+      <button type="button"
+              class="btn btn-secondary btn-sm"
+              hx-post="/pipeline/stop"
+              hx-target="#pipeline-card"
+              hx-swap="outerHTML"
+              hx-confirm="Stop the running pipeline?"
+              hx-disabled-elt="this">
+        ■ Stop
+      </button>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if run %}
+  <div class="pipeline-run-meta">
+    <span class="pipeline-run-id">Run #{{ run.id }}</span>
+    <span class="pipeline-run-trigger">{{ run.trigger }}</span>
+    <span class="pipeline-run-started">started {{ (run.started_at or "")[:19].replace("T", " ") }}</span>
+  </div>
+  <div class="pipeline-run-subtitle pipeline-status-{{ status }}">
+    {% if status == "running" %}
+      Running…
+    {% elif status == "ok" %}
+      Completed
+    {% elif status == "stopped" %}
+      Stopped: {{ run.stop_reason or "stopped" }}
+    {% elif status == "cancelled" %}
+      Cancelled by user
+    {% elif status == "failed" %}
+      {% set failed_step = (steps | selectattr("status", "equalto", "failed") | first) %}
+      Failed{% if failed_step %} at {{ failed_step.node }}{% endif %}{% if run.error %}: {{ (run.error.splitlines()[0] if run.error else "") }}{% endif %}
+    {% else %}
+      {{ status_subtitle.get(status, status) }}
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="pipeline-run-meta">
+    <span class="pipeline-run-empty">No runs yet — click Start.</span>
+  </div>
+  {% endif %}
+
+  {% if steps %}
+  <ul class="pipeline-steps">
+    {% for step in steps %}
+      {# Pending steps on a finished run render as skipped. #}
+      {% set effective = step.status %}
+      {% if finished and effective == "pending" %}{% set effective = "skipped" %}{% endif %}
+      <li class="pipeline-step pipeline-step-{{ effective }}">
+        <span class="pipeline-step-dot pipeline-step-dot-{{ effective }}" aria-hidden="true"></span>
+        <span class="pipeline-step-node">{{ step.node }}</span>
+        <span class="pipeline-step-status">{{ effective }}</span>
+        <span class="pipeline-step-progress">
+          {%- if step.progress -%}{{ step.progress }}{%- else -%}—{%- endif -%}
+        </span>
+        {% set pct = step.progress | progress_percent %}
+        {% if pct is not none %}
+          <span class="pipeline-step-bar" aria-hidden="true">
+            <span class="pipeline-step-bar-fill" style="width: {{ pct }}%"></span>
+          </span>
+        {% endif %}
+        {% if step.error %}
+          <details class="pipeline-step-error">
+            <summary>error</summary>
+            <pre>{{ step.error }}</pre>
+          </details>
+        {% endif %}
+      </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</div>
+
+<div class="pipeline-recent">
+  <div class="pipeline-recent-head">
+    <h4>Recent runs</h4>
+  </div>
+  {% if recent %}
+  <ul class="pipeline-recent-list">
+    {% for r in recent %}
+    <li class="pipeline-recent-item pipeline-status-{{ r.status }}">
+      <span class="pipeline-recent-id">#{{ r.id }}</span>
+      <span class="pipeline-recent-time">{{ (r.started_at or "")[11:19] }}</span>
+      <span class="pipeline-recent-status">{{ r.status }}</span>
+      <span class="pipeline-recent-note">
+        {% if r.stop_reason %}{{ r.stop_reason }}{% elif r.error %}{{ r.error.splitlines()[0] if r.error else "" }}{% endif %}
+      </span>
+      <a class="pipeline-recent-link" href="/pipeline/runs/{{ r.id }}">details →</a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="pipeline-recent-empty">No previous runs.</p>
+  {% endif %}
+</div>

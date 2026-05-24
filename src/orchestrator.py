@@ -4,9 +4,12 @@ import json
 import logging
 import os
 import re
+import signal
 import sqlite3
 import sys
 import time
+import traceback
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TypedDict
 
@@ -21,6 +24,7 @@ if _PROJECT_ROOT not in sys.path:
 
 from cli import cmd_scrape, cmd_dedup, cmd_generate  # noqa: E402
 
+from . import db
 from .carousel_gen import ClaudeCarouselGenerator
 from .db import save_reviewed_post
 
@@ -29,7 +33,8 @@ logger = logging.getLogger(__name__)
 
 # ---------- State ----------
 
-class PipelineState(TypedDict):
+class PipelineState(TypedDict, total=False):
+    run_id: int
     force: bool
     articles_count: int
     unique_count: int
@@ -37,7 +42,46 @@ class PipelineState(TypedDict):
     review_results: list       # [{post, score, suggestions}, ...]
     reviewed_posts: list
     saved_count: int
+    saved_post_ids: list
+    images_count: int
     stop_reason: str | None
+
+
+# ---------- Status helpers ----------
+
+def _now_iso() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _short_traceback(e: BaseException, limit: int = 2000) -> str:
+    return "".join(traceback.format_exception(type(e), e, e.__traceback__))[:limit]
+
+
+@contextmanager
+def _step(run_id: int | None, node: str):
+    """Mark a step running on entry; ok/failed on exit. No-op if run_id is None."""
+    if run_id is None:
+        yield
+        return
+    db.update_run_step(run_id, node, status="running", started_at=_now_iso())
+    try:
+        yield
+    except BaseException as e:
+        db.update_run_step(
+            run_id, node,
+            status="failed",
+            error=_short_traceback(e),
+            finished_at=_now_iso(),
+        )
+        raise
+    else:
+        db.update_run_step(run_id, node, status="ok", finished_at=_now_iso())
+
+
+def _progress(run_id: int | None, node: str, text: str) -> None:
+    if run_id is None:
+        return
+    db.update_run_step(run_id, node, progress=text)
 
 
 # ---------- Prompts ----------
@@ -237,89 +281,172 @@ def _article_hash(article: dict) -> str:
 
 
 def _scrape_node(state: PipelineState) -> dict:
-    cmd_scrape()
-    articles_path = Path("data/latest_articles.json")
-    articles = json.loads(articles_path.read_text(encoding="utf-8")) if articles_path.exists() else []
-    if not articles:
-        return {"articles_count": 0, "stop_reason": "no new articles scraped"}
-    return {"articles_count": len(articles)}
+    run_id = state.get("run_id")
+    with _step(run_id, "scrape"):
+        cmd_scrape()
+        articles_path = Path("data/latest_articles.json")
+        articles = json.loads(articles_path.read_text(encoding="utf-8")) if articles_path.exists() else []
+        if not articles:
+            _progress(run_id, "scrape", "0 articles")
+            return {"articles_count": 0, "stop_reason": "no new articles scraped"}
+        _progress(run_id, "scrape", f"{len(articles)} articles")
+        return {"articles_count": len(articles)}
 
 
 def _dedup_node(state: PipelineState) -> dict:
-    cmd_dedup()
-    deduped_path = Path("data/deduped_articles.json")
-    deduped = json.loads(deduped_path.read_text(encoding="utf-8")) if deduped_path.exists() else []
-    if not deduped:
-        return {"unique_count": 0, "stop_reason": "all articles were duplicates"}
-    return {"unique_count": len(deduped)}
+    run_id = state.get("run_id")
+    with _step(run_id, "dedup"):
+        cmd_dedup()
+        deduped_path = Path("data/deduped_articles.json")
+        deduped = json.loads(deduped_path.read_text(encoding="utf-8")) if deduped_path.exists() else []
+        if not deduped:
+            _progress(run_id, "dedup", "0 unique")
+            return {"unique_count": 0, "stop_reason": "all articles were duplicates"}
+        _progress(run_id, "dedup", f"{len(deduped)} unique")
+        return {"unique_count": len(deduped)}
 
 
 def _generate_node(state: PipelineState) -> dict:
-    cmd_generate(force_refresh=state["force"])
-    posts_path = Path("data/generated_posts.json")
-    posts = json.loads(posts_path.read_text(encoding="utf-8")) if posts_path.exists() else []
-    if not posts:
-        return {"posts": [], "stop_reason": "carousel generation produced no posts"}
-    return {"posts": posts}
+    run_id = state.get("run_id")
+    with _step(run_id, "generate"):
+        cmd_generate(force_refresh=state["force"])
+        posts_path = Path("data/generated_posts.json")
+        posts = json.loads(posts_path.read_text(encoding="utf-8")) if posts_path.exists() else []
+        if not posts:
+            _progress(run_id, "generate", "0 carousels")
+            return {"posts": [], "stop_reason": "carousel generation produced no posts"}
+        _progress(run_id, "generate", f"{len(posts)} carousels")
+        return {"posts": posts}
 
 
 def _review_node(state: PipelineState) -> dict:
-    posts = state["posts"]
-    results = []
-    for i, post in enumerate(posts):
-        title = post.get("article", {}).get("title", "")[:50]
-        logger.info("Reviewing post %d/%d: %s", i + 1, len(posts), title)
-        print(f"  Reviewing {i + 1}/{len(posts)}: {title}...", flush=True)
-        review = run_review(post)
-        score = float(review.get("score", 5))
-        results.append({
-            "post": post,
-            "score": score,
-            "suggestions": review.get("suggestions", []),
-        })
-        if i < len(posts) - 1:
-            time.sleep(1)
-    return {"review_results": results}
+    run_id = state.get("run_id")
+    with _step(run_id, "review"):
+        posts = state["posts"]
+        results = []
+        for i, post in enumerate(posts):
+            title = post.get("article", {}).get("title", "")[:50]
+            _progress(run_id, "review", f"Reviewing {i + 1}/{len(posts)} posts")
+            logger.info("Reviewing post %d/%d: %s", i + 1, len(posts), title)
+            print(f"  Reviewing {i + 1}/{len(posts)}: {title}...", flush=True)
+            review = run_review(post)
+            score = float(review.get("score", 5))
+            results.append({
+                "post": post,
+                "score": score,
+                "suggestions": review.get("suggestions", []),
+            })
+            if i < len(posts) - 1:
+                time.sleep(1)
+        return {"review_results": results}
 
 
 def _revise_node(state: PipelineState) -> dict:
-    reviewed = []
-    for item in state["review_results"]:
-        post = item["post"]
-        score = item["score"]
-        title = post.get("article", {}).get("title", "")[:50]
-        if score < 7:
-            logger.info("  Score %.1f — revising: %s", score, title)
-            print(f"    Score {score:.0f} — revising...", flush=True)
-            revised_carousel = run_revise(post, item["suggestions"])
-            post = {**post, "carousel": revised_carousel}
-        else:
-            logger.info("  Score %.1f — approved: %s", score, title)
-            print(f"    Score {score:.0f} — approved", flush=True)
-        reviewed.append({"post": post, "score": score})
-    return {"reviewed_posts": reviewed}
+    run_id = state.get("run_id")
+    with _step(run_id, "revise"):
+        reviewed = []
+        items = state["review_results"]
+        for i, item in enumerate(items):
+            post = item["post"]
+            score = item["score"]
+            title = post.get("article", {}).get("title", "")[:50]
+            _progress(run_id, "revise", f"Revising {i + 1}/{len(items)} posts")
+            if score < 7:
+                logger.info("  Score %.1f — revising: %s", score, title)
+                print(f"    Score {score:.0f} — revising...", flush=True)
+                revised_carousel = run_revise(post, item["suggestions"])
+                post = {**post, "carousel": revised_carousel}
+            else:
+                logger.info("  Score %.1f — approved: %s", score, title)
+                print(f"    Score {score:.0f} — approved", flush=True)
+            reviewed.append({"post": post, "score": score})
+        return {"reviewed_posts": reviewed}
+
+
+def _route_after_review(state: PipelineState) -> str:
+    """Pure routing decision: revise if any score < 7, else save_draft."""
+    return "revise" if any(r["score"] < 7 for r in state.get("review_results", [])) else "save_draft"
 
 
 def _save_draft_node(state: PipelineState) -> dict:
-    # Use reviewed_posts if revise ran; otherwise convert from review_results directly
-    posts_to_save = state.get("reviewed_posts") or [
-        {"post": r["post"], "score": r["score"]}
-        for r in state.get("review_results", [])
-    ]
-    saved = 0
-    for item in posts_to_save:
-        post = item["post"]
-        article = post.get("article", {})
-        ok = save_reviewed_post(
-            article_hash=_article_hash(article),
-            article_url=article.get("url", ""),
-            article_title=article.get("title", ""),
-            carousel_json=post.get("carousel", {}),
-            review_score=item["score"],
-        )
-        if ok:
-            saved += 1
-    return {"saved_count": saved}
+    run_id = state.get("run_id")
+
+    # If we arrived without going through revise, mark revise as skipped so the
+    # UI shows the correct state during the run (not just after it ends).
+    if run_id is not None and not state.get("revised_posts") and not state.get("reviewed_posts"):
+        needs_revise = any(r["score"] < 7 for r in state.get("review_results", []))
+        if not needs_revise:
+            db.update_run_step(
+                run_id, "revise",
+                status="skipped", finished_at=_now_iso(),
+            )
+
+    with _step(run_id, "save_draft"):
+        # Use reviewed_posts if revise ran; otherwise convert from review_results directly
+        posts_to_save = state.get("reviewed_posts") or [
+            {"post": r["post"], "score": r["score"]}
+            for r in state.get("review_results", [])
+        ]
+        saved = 0
+        saved_post_ids: list[int] = []
+        for item in posts_to_save:
+            post = item["post"]
+            article = post.get("article", {})
+            carousel = post.get("carousel", {})
+            carousel["og_image_url"] = article.get("og_image_url", "")
+            article_hash = _article_hash(article)
+            ok = save_reviewed_post(
+                article_hash=article_hash,
+                article_url=article.get("url", ""),
+                article_title=article.get("title", ""),
+                carousel_json=carousel,
+                review_score=item["score"],
+            )
+            if ok:
+                saved += 1
+            with db.get_conn() as conn:
+                row = conn.execute(
+                    "SELECT id FROM generated_posts WHERE article_hash = ?",
+                    (article_hash,),
+                ).fetchone()
+            if row:
+                saved_post_ids.append(row["id"])
+        return {"saved_count": saved, "saved_post_ids": saved_post_ids}
+
+
+def _images_node(state: PipelineState) -> dict:
+    run_id = state.get("run_id")
+    post_ids = state.get("saved_post_ids", [])
+    with _step(run_id, "images"):
+        if not post_ids:
+            _progress(run_id, "images", "no posts to render")
+            return {"images_count": 0}
+        from .db import get_post, save_image_paths
+        from .ImageGen import generate_for_post
+        rendered = 0
+        for i, post_id in enumerate(post_ids):
+            _progress(
+                run_id, "images",
+                f"Rendering post {i + 1}/{len(post_ids)} (id={post_id})",
+            )
+            post = get_post(post_id)
+            if not post:
+                logger.warning("images: post id %s not found, skipping", post_id)
+                continue
+            try:
+                carousel = json.loads(post["carousel_json"])
+            except (json.JSONDecodeError, TypeError):
+                logger.warning("images: invalid carousel_json for post %s, skipping", post_id)
+                continue
+            brand_domain = carousel.get("brand_domain")
+            paths = generate_for_post(
+                post_id=post_id,
+                carousel=carousel,
+                brand_domain=brand_domain,
+            )
+            save_image_paths(post_id, [str(p) for p in paths])
+            rendered += 1
+        return {"images_count": rendered}
 
 
 # ---------- Graph assembly ----------
@@ -332,25 +459,40 @@ def _build_graph(checkpointer) -> object:
     builder.add_node("review", _review_node)
     builder.add_node("revise", _revise_node)
     builder.add_node("save_draft", _save_draft_node)
+    builder.add_node("images", _images_node)
 
     builder.set_entry_point("scrape")
     builder.add_conditional_edges("scrape", lambda s: END if s.get("stop_reason") else "dedup")
     builder.add_conditional_edges("dedup", lambda s: END if s.get("stop_reason") else "generate")
     builder.add_conditional_edges("generate", lambda s: END if s.get("stop_reason") else "review")
-    builder.add_conditional_edges(
-        "review",
-        lambda s: "revise" if any(r["score"] < 7 for r in s.get("review_results", [])) else "save_draft",
-    )
+    builder.add_conditional_edges("review", _route_after_review)
     builder.add_edge("revise", "save_draft")
-    builder.add_edge("save_draft", END)
+    builder.add_edge("save_draft", "images")
+    builder.add_edge("images", END)
 
     return builder.compile(checkpointer=checkpointer)
 
 
 # ---------- Entry point ----------
 
-def run_pipeline(force: bool = False) -> None:
+def run_pipeline(force: bool = False, run_id: int | None = None) -> None:
     load_dotenv()
+
+    if run_id is None:
+        run_id = db.create_pipeline_run(trigger="cli")
+        if run_id is None:
+            logger.error("Another pipeline run is already active; aborting.")
+            sys.exit(2)
+
+    db.update_run(run_id, pid=os.getpid())
+
+    def _on_signal(signum, _frame):
+        db.cancel_running_step(run_id)
+        db.finish_pipeline_run(run_id, status="cancelled")
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, _on_signal)
+    signal.signal(signal.SIGINT, _on_signal)
 
     today = datetime.date.today().isoformat()
     thread_id = f"pipeline-{today}-{int(time.time())}" if force else f"pipeline-{today}"
@@ -359,12 +501,14 @@ def run_pipeline(force: bool = False) -> None:
     checkpoint_path.parent.mkdir(exist_ok=True)
 
     conn = sqlite3.connect(str(checkpoint_path), check_same_thread=False)
+    final: dict = {}
     try:
         saver = SqliteSaver(conn)
         graph = _build_graph(saver)
         config = {"configurable": {"thread_id": thread_id}}
 
         initial_state: PipelineState = {
+            "run_id": run_id,
             "force": force,
             "articles_count": 0,
             "unique_count": 0,
@@ -372,11 +516,12 @@ def run_pipeline(force: bool = False) -> None:
             "review_results": [],
             "reviewed_posts": [],
             "saved_count": 0,
+            "saved_post_ids": [],
+            "images_count": 0,
             "stop_reason": None,
         }
 
-        print("Starting pipeline...")
-        final = {}
+        print(f"Starting pipeline (run #{run_id})...")
         for event in graph.stream(initial_state, config=config):
             for node_name, node_state in event.items():
                 if node_name == "scrape" and node_state.get("articles_count", 0):
@@ -391,6 +536,8 @@ def run_pipeline(force: bool = False) -> None:
                     print(f"  ✓ Revised {len(node_state['reviewed_posts'])} posts")
                 elif node_name == "save_draft":
                     print(f"  ✓ Saved {node_state.get('saved_count', 0)} to DB")
+                elif node_name == "images":
+                    print(f"  ✓ Rendered {node_state.get('images_count', 0)} post(s)")
                 final.update(node_state)
 
         if final.get("stop_reason"):
@@ -402,7 +549,19 @@ def run_pipeline(force: bool = False) -> None:
                 f"  Unique   : {final.get('unique_count', 0)}\n"
                 f"  Generated: {len(final.get('posts', []))}\n"
                 f"  Reviewed : {len(final.get('reviewed_posts', []))}\n"
-                f"  Saved    : {final.get('saved_count', 0)}"
+                f"  Saved    : {final.get('saved_count', 0)}\n"
+                f"  Images   : {final.get('images_count', 0)}"
             )
+    except Exception as e:
+        db.finish_pipeline_run(
+            run_id, status="failed", error=_short_traceback(e),
+        )
+        raise
+    else:
+        db.finish_pipeline_run(
+            run_id,
+            status="stopped" if final.get("stop_reason") else "ok",
+            stop_reason=final.get("stop_reason"),
+        )
     finally:
         conn.close()

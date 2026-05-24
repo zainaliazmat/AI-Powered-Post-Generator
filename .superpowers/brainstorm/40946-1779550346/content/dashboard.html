@@ -1,0 +1,127 @@
+<h2>Dashboard — UI Mockup</h2>
+<p class="subtitle">Overview of pipeline state at a glance. One click to get to the review queue.</p>
+
+<style>
+  .dash { max-width: 820px; margin: 0 auto; font-family: system-ui, sans-serif; }
+
+  /* Stat cards */
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+  .stat-card {
+    background: #1a1a2e; border: 1px solid #2a2a4a; border-radius: 10px;
+    padding: 16px; text-align: center;
+  }
+  .stat-card.highlight { border-color: #b8ff3a; background: #151f0a; }
+  .stat-number { font-size: 32px; font-weight: 700; line-height: 1; margin-bottom: 4px; }
+  .stat-label { font-size: 12px; color: #667799; text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat-pending .stat-number { color: #dddd66; }
+  .stat-approved .stat-number { color: #66dd66; }
+  .stat-rejected .stat-number { color: #dd6666; }
+  .stat-total .stat-number { color: #8888ff; }
+
+  /* Pipeline status */
+  .section-title { font-size: 13px; color: #667799; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+
+  .pipeline-row {
+    background: #1a1a2e; border: 1px solid #2a2a4a; border-radius: 10px;
+    padding: 14px 16px; margin-bottom: 12px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .pip-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .pip-dot.ok { background: #66dd66; }
+  .pip-dot.warn { background: #dddd66; }
+  .pip-dot.idle { background: #444466; }
+  .pip-name { font-size: 14px; color: #c8c8e0; flex: 1; }
+  .pip-detail { font-size: 12px; color: #667799; }
+  .pip-time { font-size: 12px; color: #556677; white-space: nowrap; }
+
+  /* CTA */
+  .cta-block {
+    background: #151f0a; border: 1px solid #b8ff3a; border-radius: 10px;
+    padding: 16px 20px; display: flex; align-items: center; justify-content: space-between;
+    margin-top: 8px;
+  }
+  .cta-text h3 { color: #b8ff3a; margin: 0 0 2px; font-size: 16px; }
+  .cta-text p { color: #889966; margin: 0; font-size: 13px; }
+  .btn-review {
+    background: #b8ff3a; color: #0a1a00; font-weight: 700; font-size: 14px;
+    padding: 10px 24px; border-radius: 8px; border: none; cursor: pointer;
+    text-decoration: none; white-space: nowrap;
+  }
+
+  /* Nav bar mockup */
+  .mock-topbar {
+    background: #0f0f1e; border-bottom: 1px solid #2a2a4a;
+    padding: 10px 20px; display: flex; align-items: center; gap: 24px;
+    border-radius: 8px 8px 0 0; margin-bottom: 20px;
+  }
+  .nav-brand { font-weight: 700; color: #b8ff3a; font-size: 15px; }
+  .nav-link { font-size: 13px; color: #667799; text-decoration: none; }
+  .nav-link.active { color: #e8e8f0; }
+</style>
+
+<div class="dash">
+
+  <!-- Nav mockup -->
+  <div class="mock-topbar">
+    <span class="nav-brand">⚡ InstaBot</span>
+    <a class="nav-link active">Dashboard</a>
+    <a class="nav-link">Review Queue</a>
+  </div>
+
+  <!-- Stats row -->
+  <div class="stat-grid">
+    <div class="stat-card stat-pending highlight">
+      <div class="stat-number">3</div>
+      <div class="stat-label">Pending Review</div>
+    </div>
+    <div class="stat-card stat-approved">
+      <div class="stat-number">12</div>
+      <div class="stat-label">Approved</div>
+    </div>
+    <div class="stat-card stat-rejected">
+      <div class="stat-number">4</div>
+      <div class="stat-label">Rejected</div>
+    </div>
+    <div class="stat-card stat-total">
+      <div class="stat-number">19</div>
+      <div class="stat-label">Total Posts</div>
+    </div>
+  </div>
+
+  <!-- Pipeline status -->
+  <div class="section-title">Pipeline Status</div>
+  <div class="pipeline-row">
+    <div class="pip-dot ok"></div>
+    <div class="pip-name">Last scrape</div>
+    <div class="pip-detail">47 articles · 3 sources</div>
+    <div class="pip-time">2h ago · 09:14</div>
+  </div>
+  <div class="pipeline-row">
+    <div class="pip-dot ok"></div>
+    <div class="pip-name">Last generation</div>
+    <div class="pip-detail">5 posts generated · avg score 7.8</div>
+    <div class="pip-time">2h ago · 09:16</div>
+  </div>
+  <div class="pipeline-row">
+    <div class="pip-dot warn"></div>
+    <div class="pip-name">Crashed sources</div>
+    <div class="pip-detail">2 sources need fixing</div>
+    <div class="pip-time">—</div>
+  </div>
+  <div class="pipeline-row">
+    <div class="pip-dot idle"></div>
+    <div class="pip-name">Next publish</div>
+    <div class="pip-detail">Not scheduled (M7)</div>
+    <div class="pip-time">—</div>
+  </div>
+
+  <!-- CTA -->
+  <div class="cta-block">
+    <div class="cta-text">
+      <h3>3 posts waiting for review</h3>
+      <p>Approve or reject each post before it can be published</p>
+    </div>
+    <a class="btn-review" href="/review">Review Queue →</a>
+  </div>
+
+</div>

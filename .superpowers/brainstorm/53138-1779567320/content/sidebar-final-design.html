@@ -1,0 +1,86 @@
+<h2>Final Design — Expanded vs Collapsed</h2>
+<p class="subtitle">Side by side: what the dashboard will look like in each state. Click either card to select it as approved.</p>
+
+<div class="split">
+
+  <!-- Expanded state -->
+  <div class="mockup">
+    <div class="mockup-header">Expanded (default)</div>
+    <div class="mockup-body" style="padding:0;display:flex;min-height:260px;background:#0d1117;">
+      <div style="width:160px;background:#0f1318;border-right:2px solid #b8ff3a33;display:flex;flex-direction:column;padding:0;flex-shrink:0;">
+        <!-- Logo -->
+        <div style="padding:14px 14px 10px;border-bottom:1px solid #1e2530;">
+          <span style="color:#b8ff3a;font-weight:bold;font-size:13px;">⚡ InstaBot</span>
+        </div>
+        <!-- Nav items -->
+        <nav style="flex:1;padding:8px 6px;display:flex;flex-direction:column;gap:2px;">
+          <a style="display:flex;align-items:center;gap:8px;padding:7px 8px;background:#b8ff3a18;color:#b8ff3a;border-radius:5px;font-size:11px;text-decoration:none;">
+            <span>⊞</span><span>Dashboard</span>
+          </a>
+          <a style="display:flex;align-items:center;gap:8px;padding:7px 8px;color:#8899aa;border-radius:5px;font-size:11px;text-decoration:none;">
+            <span>☰</span><span>Review Queue</span>
+          </a>
+        </nav>
+        <!-- Collapse button -->
+        <div style="border-top:1px solid #1e2530;padding:8px 6px;">
+          <button style="width:100%;background:none;border:1px solid #2a3540;border-radius:4px;color:#556677;font-size:10px;padding:5px;cursor:pointer;">‹ Collapse</button>
+        </div>
+      </div>
+      <!-- Main content -->
+      <div style="flex:1;padding:14px;">
+        <div style="font-size:12px;color:#b8ff3a;margin-bottom:10px;font-weight:bold;">Dashboard</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;">
+          <div style="background:#1a2a1a;border:1px solid #2a4a2a;border-radius:5px;padding:8px;font-size:11px;color:#66ff66;">3<br><span style="color:#556;font-size:9px;">Pending Review</span></div>
+          <div style="background:#162030;border:1px solid #253545;border-radius:5px;padding:8px;font-size:11px;color:#8888ff;">12<br><span style="color:#556;font-size:9px;">Total Posts</span></div>
+        </div>
+        <div style="background:#0f1318;border:1px solid #1e2530;border-radius:5px;padding:8px;font-size:9px;color:#66778888;">Pipeline Status table...</div>
+        <div style="margin-top:8px;background:#b8ff3a22;border:1px solid #b8ff3a44;border-radius:5px;padding:7px;font-size:9px;color:#b8ff3a;">→ Review Queue — 3 posts waiting</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Collapsed state -->
+  <div class="mockup">
+    <div class="mockup-header">Collapsed (icon strip)</div>
+    <div class="mockup-body" style="padding:0;display:flex;min-height:260px;background:#0d1117;">
+      <div style="width:48px;background:#0f1318;border-right:2px solid #b8ff3a33;display:flex;flex-direction:column;align-items:center;padding:0;flex-shrink:0;">
+        <!-- Logo icon -->
+        <div style="padding:14px 0 10px;border-bottom:1px solid #1e2530;width:100%;display:flex;justify-content:center;">
+          <span style="color:#b8ff3a;font-size:14px;">⚡</span>
+        </div>
+        <!-- Icons only -->
+        <nav style="flex:1;padding:8px 0;display:flex;flex-direction:column;align-items:center;gap:4px;width:100%;">
+          <span title="Dashboard" style="display:flex;align-items:center;justify-content:center;width:36px;height:32px;background:#b8ff3a18;border-radius:5px;color:#b8ff3a;font-size:14px;cursor:pointer;">⊞</span>
+          <span title="Review Queue" style="display:flex;align-items:center;justify-content:center;width:36px;height:32px;color:#8899aa;border-radius:5px;font-size:14px;cursor:pointer;">☰</span>
+        </nav>
+        <!-- Expand button -->
+        <div style="border-top:1px solid #1e2530;padding:8px 0;width:100%;display:flex;justify-content:center;">
+          <span style="color:#556677;font-size:14px;cursor:pointer;">›</span>
+        </div>
+      </div>
+      <!-- Main content takes full remaining width -->
+      <div style="flex:1;padding:14px;">
+        <div style="font-size:12px;color:#b8ff3a;margin-bottom:10px;font-weight:bold;">Dashboard</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;">
+          <div style="background:#1a2a1a;border:1px solid #2a4a2a;border-radius:5px;padding:8px;font-size:11px;color:#66ff66;">3<br><span style="color:#556;font-size:9px;">Pending Review</span></div>
+          <div style="background:#162030;border:1px solid #253545;border-radius:5px;padding:8px;font-size:11px;color:#8888ff;">12<br><span style="color:#556;font-size:9px;">Total Posts</span></div>
+        </div>
+        <div style="background:#0f1318;border:1px solid #1e2530;border-radius:5px;padding:8px;font-size:9px;color:#667788;">Pipeline Status table...</div>
+        <div style="margin-top:8px;background:#b8ff3a22;border:1px solid #b8ff3a44;border-radius:5px;padding:7px;font-size:9px;color:#b8ff3a;">→ Review Queue — 3 posts waiting</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div style="margin-top:24px;background:#0f1318;border:1px solid #1e2530;border-radius:6px;padding:14px;">
+  <h3 style="margin:0 0 10px;">Implementation summary</h3>
+  <ul style="margin:0;padding-left:18px;font-size:12px;color:#8899aa;line-height:1.8;">
+    <li><strong style="color:#ccc;">Remove</strong> top <code>&lt;nav&gt;</code> from <code>base.html</code></li>
+    <li><strong style="color:#ccc;">Add</strong> full-height flex layout: sidebar + main side by side</li>
+    <li><strong style="color:#ccc;">Sidebar width:</strong> 160px expanded · 48px collapsed</li>
+    <li><strong style="color:#ccc;">Toggle:</strong> minimal JS — one class on <code>&lt;body&gt;</code>, CSS handles the transition</li>
+    <li><strong style="color:#ccc;">Collapsed state persists</strong> via <code>localStorage</code> across page loads</li>
+    <li><strong style="color:#ccc;">CSS transition:</strong> smooth 200ms width animation</li>
+  </ul>
+</div>

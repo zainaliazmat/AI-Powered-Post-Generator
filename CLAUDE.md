@@ -1,217 +1,244 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with this repository.
 
 ## What This Project Builds
 
 An automated Instagram content pipeline for tech news:
 
-1. **Fetch** — scrape all active sources → single JSON file (`data/latest_articles.json`)
+1. **Fetch** — scrape all active sources → `data/latest_articles.json`
 2. **Deduplicate + Filter** — merge duplicate stories, score for virality
-3. **Generate** — produce 8-slide carousel JSON via Claude Haiku (summary + caption + image prompts)
-4. **Review** — adversarial ReviewAgent (Sonnet) scores each carousel; ReviseAgent (Haiku) rewrites failing posts
-5. **Image** — render each carousel slide as a Pillow text card or Flux.1-schnell image
-6. **Approve** — human approval queue via FastAPI web UI before publishing
+3. **Generate** — produce 8-slide carousel JSON via Claude Haiku
+4. **Review** — ReviewAgent (Sonnet) scores; ReviseAgent (Haiku) rewrites failing posts
+5. **Image** — render each slide as Pillow text card or Flux.1-schnell image
+6. **Approve** — human approval queue via FastAPI web UI
 7. **Publish** — auto-post approved carousels to Instagram on a schedule
 
-**Run the full pipeline in one command:** `python cli.py --run`
+**Run the full pipeline:** `python cli.py --run`
 
 ## Tech Stack
 
-| Layer | Choice | Notes |
-|-------|--------|-------|
-| Web framework | FastAPI + Jinja2 + uvicorn | HTML-first, no JS required |
-| Database | SQLite | Local file at `data/pipeline.db`; `sqlite3` stdlib only |
-| RSS | feedparser + RSSHub fallback + BeautifulSoup | Three-tier fetch strategy |
-| Deduplication | scikit-learn (TF-IDF + cosine) + Jaccard | Two-pass; sklearn optional fallback to Jaccard-only |
-| Carousel generation | Claude Haiku (`claude-haiku-4-5`) | 8-slide JSON + `brand_domain` per article |
-| **Orchestrator** | **LangGraph + LiteLLM** | **StateGraph: scrape→dedup→generate→review→revise→save_draft; checkpointed to `data/pipeline_checkpoints.db`** |
-| Image generation | Flux.1-schnell via Replicate + Pillow | Brand-aware prompts; Clearbit logo badge composited top-right; Pillow text card as fallback |
-| Brand assets | Clearbit Logo API + Pillow | `fetch_logo` → cache `data/brand_assets/`; `enrich_prompt` injects brand colors/style; `composite_badge` overlays circular logo |
-| Instagram | instagrapi or Graph API | Discuss ban risk before M7 |
-| Scheduling | APScheduler | In-process cron |
-| Config | python-dotenv | `.env` only — never hardcode secrets |
+| Layer | Choice |
+|-------|--------|
+| Web framework | FastAPI + Jinja2 + uvicorn (HTML-first, HTMX polling) |
+| Database | SQLite (`data/pipeline.db`; `sqlite3` stdlib only; WAL + `busy_timeout=5000`) |
+| RSS | feedparser + RSSHub fallback + BeautifulSoup |
+| Deduplication | scikit-learn TF-IDF + Jaccard (sklearn optional) |
+| Carousel gen | Claude Haiku `claude-haiku-4-5` via LiteLLM |
+| Orchestrator | LangGraph StateGraph (7 nodes incl. `images`); checkpoints to `data/pipeline_checkpoints.db`; live status in `pipeline_runs` + `pipeline_run_steps` |
+| Image gen | `src/ImageGen/` — `IMAGE_RENDERER=pillow` (default) or `flux`; folded into orchestrator as 7th node |
+| Brand assets | Logo.dev API → cached PNGs in `data/brand_assets/` |
+| Instagram | instagrapi or Graph API (discuss ban risk before M7) |
+| Scheduling | APScheduler (in-process cron) |
+| Config | python-dotenv (`.env` only) |
 
 ## Module Map
 
 ```
 src/
-├── fetcher.py        ← M1: fetch all sources, return articles list
-├── discovery.py      ← M1: probe URLs to find the best fetch method
-├── models.py         ← M1: Article TypedDict (includes M2 dedup fields)
-├── shared.py         ← M1: HTTP helpers, RSS parsers, generic extractors
-├── dedup.py          ← M2: deduplicate articles by title similarity before scoring
-├── filter.py         ← M2: score + discard low-virality (not yet built)
-├── carousel_gen.py   ← M3: Claude Haiku carousel generator; outputs slides + brand_domain per article
-├── orchestrator.py   ← M_Orch: LangGraph StateGraph pipeline (6 nodes); LiteLLM for review + revise
-├── brand.py          ← M5: fetch_logo (Clearbit+cache), enrich_prompt (brand styles), composite_badge (Pillow)
-├── image_gen.py      ← M5: generate_for_post/slide (Flux.1-schnell + brand badge); _pillow_text_card fallback
-├── db.py             ← shared SQLite helpers (data/pipeline.db)
-├── instagram.py      ← M7: publish to Instagram
-├── scheduler.py      ← M6: APScheduler jobs
-└── main.py           ← M6: FastAPI app + routes
+├── fetcher.py        — fetch all sources
+├── discovery.py      — probe URLs for best fetch method
+├── models.py         — Article TypedDict
+├── shared.py         — HTTP helpers, RSS parsers, fetch_og_image
+├── dedup.py          — deduplicate by title similarity
+├── filter.py         — score + discard low-virality (not yet built)
+├── carousel_gen.py   — Claude Haiku carousel generator (8 slides + brand_domain)
+├── orchestrator.py   — LangGraph StateGraph (7 nodes: scrape → dedup → generate → review → revise → save_draft → images); writes live status to pipeline_runs / pipeline_run_steps
+├── brand.py          — fetch_logo (Logo.dev+cache), composite_badge
+├── ImageGen/
+│   ├── __init__.py         — re-exports generate_for_post, generate_for_slide
+│   ├── image_gen.py        — router: IMAGE_RENDERER env var
+│   ├── image_gen_flux.py   — Flux.1-schnell + enrich_prompt + pillow fallback
+│   └── image_gen_pillow.py — Pillow editorial renderer (1080×1350, DM Sans)
+├── db.py             — SQLite helpers
+├── instagram.py      — M7: publish to Instagram
+├── scheduler.py      — APScheduler jobs
+└── main.py           — FastAPI app + routes
 
-cli.py              ← entry point (scrape, dedup, generate, run, images, add sources, manage crashed)
+cli.py   — entry point
 data/
-├── pipeline.db                  ← SQLite: sources + crashed_sources + generated_posts tables
-├── pipeline_checkpoints.db      ← LangGraph checkpoint state (resume failed runs)
-├── brand_assets/                ← Clearbit logo PNGs cached by domain (e.g. nvidia.com.png)
-├── images/                      ← Generated slide images ({post_id}_{slide_number}.png, 1080×1350px)
-├── latest_articles.json         ← output of --scrape; overwritten each run; articles ≤12h old
-├── deduped_articles.json        ← output of --dedup; merged unique articles with provenance fields
-└── generated_posts.json         ← output of --generate; debug copy of carousel data
+├── pipeline.db                ← sources, crashed_sources, generated_posts
+├── pipeline_checkpoints.db    ← LangGraph resume state
+├── brand_assets/              ← domain logo PNGs (90-day cache)
+├── fonts/                     ← DM Sans ExtraBold (auto-downloaded)
+├── images/                    ← {post_id}_{slide}.png
+├── latest_articles.json       ← --scrape output (≤12h articles)
+├── deduped_articles.json      ← --dedup output
+└── generated_posts.json       ← --generate debug copy
 ```
 
 ## SQLite Tables
 
-DB file: `data/pipeline.db` — auto-created on first import of `src.db`.
+`data/pipeline.db` — auto-created on first import of `src.db`.
 
 | Table | Purpose |
 |-------|---------|
-| `sources` | active registered sources (key, url, method config) |
-| `crashed_sources` | sources that threw an exception during fetch; removed from active list |
-| `generated_posts` | carousel JSON + review score + image paths; status: `pending_review`, `approved`, `rejected`, `published`, `failed`, `image_ready` |
-| `publish_queue` | scheduled publish times for approved posts |
+| `sources` | active sources (key, url, method config) |
+| `crashed_sources` | sources that threw during fetch; restored with `--fix <key>` |
+| `generated_posts` | carousel JSON + score + image paths; status: `pending_review`, `approved`, `rejected`, `published`, `failed`, `image_ready` |
+| `pipeline_runs` | one row per pipeline run; status: `running`, `ok`, `failed`, `stopped`, `cancelled`; holds `pid`, `started_at`, `finished_at`, `error`, `stop_reason` |
+| `pipeline_run_steps` | seven rows per run (one per node, fixed seq 1..7); status: `pending`, `running`, `ok`, `failed`, `skipped`, `cancelled`; free-text `progress` column |
+| `publish_queue` | scheduled publish times |
 
-**Raw articles are NOT stored in SQLite.** The scraper writes `data/latest_articles.json` which downstream steps (M2+) read from.
+Raw articles are NOT in SQLite — `data/latest_articles.json` is the handoff file.
 
 ## CLI Reference
 
 ```bash
-# Full pipeline (recommended) — scrape → dedup → generate → review → revise → save_draft
-python cli.py --run
-python cli.py --run --force   # force-refresh carousel generation
+python cli.py --run                          # full 7-node pipeline (incl. images)
+python cli.py --run --force                  # force-refresh generation
 
-# Individual steps (manual / debug)
-python cli.py --scrape        # M1: scrape all sources → data/latest_articles.json
-python cli.py --dedup         # M2: deduplicate → data/deduped_articles.json
-python cli.py --generate      # M3: generate carousels → data/generated_posts.json
-python cli.py --generate --force-refresh
+python cli.py --scrape                       # M1 → data/latest_articles.json
+python cli.py --dedup                        # M2 → data/deduped_articles.json
+python cli.py --generate [--force-refresh]   # M3 → data/generated_posts.json
+python cli.py --images <post_id>             # ad-hoc re-render for one post (DB-saved)
 
-# M5: generate images for an approved post by DB id
-python cli.py --images <post_id>   # Flux + brand badge → data/images/; saves paths to DB
-
-# Source management
-python cli.py --add --url https://news.ycombinator.com   # discover + add new source
-python cli.py --list                                      # list active sources
-python cli.py --crashed                                   # list crashed/broken sources
-python cli.py --fix <key>                                 # restore crashed source to active
-
-# Debug a single source (prints articles, no JSON output)
-python cli.py --source <key>
+python cli.py --add --url <url>              # discover + add source
+python cli.py --list                         # active sources
+python cli.py --crashed                      # broken sources
+python cli.py --fix <key>                    # restore crashed source
+python cli.py --source <key>                 # debug single source
 ```
 
 ## Crash vs Empty Return
 
-- **Empty return** (`[]`) — acceptable. Source works; no new articles in the window. Counted as 0 in the summary log.
-- **Exception** — source is automatically moved from `sources` → `crashed_sources` table. It will not be fetched again until `--fix <key>` is run.
+- **`[]`** — acceptable; source works but no new articles in window.
+- **Exception** — source moved to `crashed_sources`; not fetched again until `--fix <key>`.
 
 ## Environment Variables
 
 ```
-ANTHROPIC_API_KEY=       # required for Claude models
-REPLICATE_API_TOKEN=     # for Flux.1-schnell image generation (M5)
+ANTHROPIC_API_KEY=
+REPLICATE_API_TOKEN=       # Flux renderer
+LOGO_DEV_TOKEN=            # Logo.dev (free key at logo.dev)
 INSTAGRAM_USERNAME=
 INSTAGRAM_PASSWORD=
 
-# LiteLLM model selection — change to switch providers (no code changes needed)
-CAROUSEL_MODEL=claude-haiku-4-5     # or gemini/gemini-1.5-flash, gpt-4o-mini
-REVIEW_MODEL=claude-sonnet-4-6      # or gemini/gemini-1.5-pro, gpt-4o
-REVISE_MODEL=claude-haiku-4-5       # or claude-sonnet-4-6 for higher revision quality
+IMAGE_RENDERER=pillow      # or flux (costs per slide via Replicate)
 
-# Gemini requires GEMINI_API_KEY; OpenAI requires OPENAI_API_KEY
+CAROUSEL_MODEL=claude-haiku-4-5
+REVIEW_MODEL=claude-sonnet-4-6
+REVISE_MODEL=claude-haiku-4-5   # use claude-sonnet-4-6 if revision quality is poor
+
+# Gemini: add GEMINI_API_KEY; OpenAI: add OPENAI_API_KEY
 ```
 
-**Quality note on `REVISE_MODEL`:** The default (`claude-haiku-4-5`) is fast and cheap but may not fully execute complex suggestions from the reviewer (Sonnet). If repeated low scores appear after revision, set `REVISE_MODEL=claude-sonnet-4-6`. This doubles revision cost but improves adherence to suggestions.
+## Code Rules
 
-## Rules for All Code in This Repo
+- Secrets in `.env` only — never hardcode
+- `sqlite3` stdlib only — no ORM
+- Every external API call: `try/except` logging to `logs/`
+- 12h age filter at scrape time; undated articles kept with `date_unknown: true`
+- `time.sleep(1)` between LLM calls in any loop
+- Web UI must work without JavaScript
+- **After every task:** update CLAUDE.md + relevant spec files — stale docs are bugs
 
-- Never store secrets in code — `.env` only, loaded via `python-dotenv`
-- Use `sqlite3` (stdlib) for all DB operations — no ORM, no external DB client
-- Every function that calls an external API must have `try/except` logging to `logs/`
-- 12h age filter applied at scrape time; articles older than 12h are dropped. Undated articles (no parseable date) are kept but flagged with `date_unknown: true`
-- Add `time.sleep(1)` between LLM calls in any loop
-- Web UI must work without JavaScript (Jinja2 templates first)
-- **After completing any task:** update CLAUDE.md (tech stack, module map, CLI reference, rules) and all relevant spec files (`specs/`, `docs/superpowers/specs/`) to reflect the current architecture — stale docs are bugs
-
-## Setup
+## Setup & Running
 
 ```bash
-source venv/bin/activate
-pip install -r requirements.txt
+./venv/bin/python -m pip install -r requirements.txt
+playwright install chromium        # scraping fallback only
 
-# Playwright (only needed for scraping fallback)
-playwright install chromium
-```
-
-## Running
-
-```bash
-# Full pipeline (one command)
-python cli.py --run
-
-# Individual steps
-python cli.py --scrape
-python cli.py --dedup
-python cli.py --generate
-
-# M6 — start web UI (future)
-uvicorn src.main:app --reload --port 8000
+python cli.py --run                                      # full pipeline
+uvicorn src.main:app --reload --port 8000                # M6 web UI
 ```
 
 ## Development Workflow
 
-Milestones are built in order (M0 → M7). Each milestone has a spec in `specs/` — read and discuss the spec before writing any code. Each milestone ends with a checkpoint test before the next begins.
+Milestones M0→M7, each with a spec in `specs/`. Read and discuss the spec before writing code.
 
-Current milestone specs live in `specs/`:
-- `specs/M0_setup.md`
-- `specs/M1_rss_fetcher.md`
-- `specs/M2_viral_filter.md`
-- `specs/M3_summarization.md`
-- `specs/M4_caption_generation.md`
-- `specs/M_orchestrator.md`  ← ⚠️ superseded; see `docs/superpowers/specs/2026-05-22-langgraph-litellm-orchestrator-design.md`
-- `specs/M5_image_generation.md`
-- `specs/M6_web_dashboard.md`
-- `specs/M7_instagram_publishing.md`
+> `specs/M_orchestrator.md` is superseded — use `docs/superpowers/specs/2026-05-22-langgraph-litellm-orchestrator-design.md`.
 
-## Git Rules
+## Orchestrator Pipeline
 
-- **Never run any git commands** (commit, add, push, status, diff, log, etc.)
-- At the end of each task, suggest the git commands the user should run — do not run them
-- The user manages all version control themselves
-
-## Orchestrator Pipeline Rules
-
-The orchestrator (`src/orchestrator.py`) is a **LangGraph StateGraph** — not Agent SDK. 6 single-responsibility nodes:
+`src/orchestrator.py` is a **LangGraph StateGraph** (not Agent SDK):
 
 ```
-scrape → dedup → generate → review → [conditional] → revise → save_draft
-                                           ↘ save_draft (all scores ≥ 7)
+scrape → dedup → generate → review → revise → save_draft → images → END
+                                    ↘ save_draft (all scores ≥ 7)
 ```
 
-| Node | Model | Responsibility |
-|------|-------|----------------|
-| `scrape` | — | `cmd_scrape()` → `articles_count` in state |
-| `dedup` | — | `cmd_dedup()` → `unique_count` in state |
-| `generate` | Haiku | `cmd_generate()` → `posts` in state |
-| `review` | Sonnet | LiteLLM: score each carousel 1-10 → `review_results` |
-| `revise` | Haiku | LiteLLM: rewrite score<7 carousels → `reviewed_posts` |
-| `save_draft` | — | INSERT to `generated_posts` as `pending_review` |
+Key invariants:
+- Each node does exactly one kind of API call
+- Every node body runs inside `_step(run_id, name)` — writes `running` on enter, `ok`/`failed` on exit
+- Conditional edge `_route_after_review` is pure (no DB writes); `revise=skipped` is written at the entry of `_save_draft_node` when arriving without `revised_posts`
+- `save_draft` falls back to `review_results` if `reviewed_posts` is empty; returns `saved_post_ids` for the `images` node
+- `images` node calls `generate_for_post` per id; per-slide failures are absorbed by ImageGen's Pillow fallback
+- Pending steps on a finished run are rendered as `skipped` (no DB write needed for that path)
+- Scoring rubric in user prompt (not system prompt) — keeps system prompt cacheable
+- `max_tokens`: review=1024, revise=2048
+- ReviewAgent JSON parse failure → treat as score=5, call revise
+- ReviseAgent output → always re-validate with `_validate_carousel()`
 
-**Key rules:**
-- Each node does exactly one thing — no node makes two different kinds of API calls
-- Conditional edge: `"revise"` if any score < 7, else skip to `"save_draft"`
-- `save_draft` falls back to `review_results` if `reviewed_posts` is empty (revise skipped)
-- Scoring rubric in the **user prompt**, not system prompt — keeps system prompt cacheable
-- `max_tokens` capped per model: review=1024, revise=2048
-- On ReviewAgent JSON parse failure → treat as score=5 and call revise
-- On ReviseAgent output → always re-validate with `_validate_carousel()` from carousel_gen.py
-- Checkpoint stored at `data/pipeline_checkpoints.db`; today's run resumes on re-run
+## Pipeline Observability
 
-## Image Generation Rules (M5)
+`pipeline_runs` + `pipeline_run_steps` are written live by the orchestrator and read by the dashboard. The single-run slot is claimed atomically via `INSERT … WHERE NOT EXISTS` in `db.create_pipeline_run`; `create_pipeline_run` returns `None` if a `running` row already exists.
 
-- `src/brand.py`: `fetch_logo` (Clearbit + 90-day cache), `enrich_prompt` (brand style dict + cleanup), `composite_badge` (80×80px circular badge, top-right, 20px inset)
-- `src/image_gen.py`: `generate_for_slide` calls `enrich_prompt` → Flux.1-schnell → `composite_badge`; falls back to `_pillow_text_card` on any Flux failure
-- Brand logo fetched from `https://logo.clearbit.com/{domain}` — free, no auth, cached to `data/brand_assets/`
-- `enrich_prompt` strips cyberpunk/neon/futuristic defaults before injecting brand style; hard cap 1000 chars
-- Image gen triggered post-approval via `python cli.py --images <post_id>` (M6 will trigger it from the web UI)
+Dashboard routes (all gated by `require_auth`):
+- `POST /pipeline/start` — claims a run row, spawns `python cli.py --run --run-id <id>` via `subprocess.Popen(start_new_session=True)`; returns 409 if a run is already active
+- `POST /pipeline/stop` — `SIGTERM` to the active run's PID (404 if no active run)
+- `GET /pipeline/status` — returns the `_pipeline_card.html` fragment; HTMX `hx-trigger="every 2s"` while running
+- `GET /pipeline/runs/{id}` — full run-detail page
+
+`cli.py --run --run-id N` is a hidden flag (`argparse.SUPPRESS`) used by the dashboard subprocess; `python cli.py --run` (no id) keeps working and creates its own row with `trigger='cli'`.
+
+Stale-run reconciliation: `db.reconcile_stale_runs` runs on FastAPI startup (`lifespan`) and every 60s in a background `asyncio` task; checks `os.kill(pid, 0)` and marks dead `running` rows as `failed`.
+
+## Image Generation
+
+`src/ImageGen/` — router (`image_gen.py`) + two renderers; `IMAGE_RENDERER` env var selects at runtime; raises `ValueError` on unknown values.
+
+- **Pillow** (`image_gen_pillow.py`): 1080×1350px; white zone + lime separator + dark og:image zone + footer; DM Sans ExtraBold (auto-downloaded); per-slide fallback to `_fallback_card`
+- **Flux** (`image_gen_flux.py`): Flux.1-schnell via Replicate; `enrich_prompt` strips cyberpunk defaults; 11s rate-limit sleep between slides; per-slide fallback to `_pillow_text_card`
+- **`brand.py`**: `fetch_logo` (Logo.dev, 90-day cache) + `composite_badge` (80px circle, top-right)
+- **`fetch_og_image` (shared.py)**: SSRF-guarded (blocks localhost/169.254.169.254/\*.local); 5s timeout
+
+---
+
+# Project Rules
+
+## Git (STRICT)
+
+Never run any git command. When done, suggest:
+
+```
+SUGGESTED COMMIT:
+git add .
+git commit -m "type(scope): message"
+```
+
+## Paths (STRICT)
+
+**Always use relative paths** in every Bash command, Read, Write, and Edit call. Never use absolute paths like `/home/zain-ali/Documents/Scraper/...`. Reference files as `src/main.py`, `.claude/last-task-summary.md`, `data/pipeline.db`, etc.
+
+## Security
+
+- Stay within project directory — no `..`, `~`, or `$HOME`
+- No global package installs
+- Never touch `/etc`, `~/.ssh`, `~/.aws`
+
+## Escalation
+
+STOP and ask if: plan must fundamentally change, permission error, test fix requires out-of-scope changes, undiscussed dependencies or config files needed.
+
+Proceed without asking for: typos, import adjustments, minor changes within the spirit of the plan.
+
+## Testing
+
+- Run `./venv/bin/python -m pytest` if tests exist
+- No pipes (`|`) or redirects in test commands — run directly
+- Always use `./venv/bin/python`, never `source venv/bin/activate`
+- On test failure: fix if in scope, else STOP
+
+## Spec Standards
+
+Specs (`specs/`) are reviewed by the developer with external AI before implementation — vague specs are rejected.
+
+Required sections: Overview, Goals, Non-Goals, Background, Detailed Design (architecture, interface, data structures, error handling, dependencies), Implementation Plan, Testing Plan, Open Questions, Decision Log, References.
+
+Writing rules:
+- No vague language — "handle errors gracefully" → specify exactly what to log/return
+- Every interface must be typed (`def foo(data: list[Article]) -> str`)
+- Non-goals are mandatory; open questions must be resolved before implementation
+- Diagrams for flows with 3+ steps (ASCII is fine)
+- Plan tasks must have a clear done condition and be ordered by dependency

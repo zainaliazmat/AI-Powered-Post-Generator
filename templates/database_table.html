@@ -1,0 +1,58 @@
+{% set active = 'database' %}
+{% extends "base.html" %}
+{% block title %}{{ table }} — Database — InstaBot{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <p class="page-breadcrumb"><a href="/database">Database</a> / {{ table }}</p>
+    <h2 class="page-title">{{ table }} <span class="db-row-badge">{{ row_count }} rows</span></h2>
+  </div>
+  <span hx-get="/database/{{ table }}/create-panel"
+        hx-target="#db-panel"
+        hx-swap="innerHTML"
+        class="btn btn-primary db-add-btn">+ Add row</span>
+</div>
+
+<div class="db-warning-banner">
+  ⚠️ Admin tool: concurrent edits are not detected. Last write wins if two sessions edit the same row simultaneously.
+</div>
+
+<div class="db-table-wrapper">
+  <table class="db-table">
+    <thead>
+      <tr>
+        {% for col in columns %}<th>{{ col.name }}</th>{% endfor %}
+        <th>actions</th>
+      </tr>
+    </thead>
+    <tbody id="db-tbody">
+      {% for row in rows %}
+        {% include '_db_row.html' %}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="db-pagination">
+  {% if page > 1 %}
+    <a href="/database/{{ table }}?page={{ page - 1 }}" class="btn btn-secondary">← Previous</a>
+  {% endif %}
+  <span class="db-page-info">
+    Showing {{ ((page-1)*page_size)+1 }}–{{ ((page-1)*page_size) + rows|length }} of {{ row_count }} rows
+  </span>
+  {% if has_next %}
+    <a href="/database/{{ table }}?page={{ page + 1 }}" class="btn btn-secondary">Next →</a>
+  {% endif %}
+</div>
+
+<div id="db-panel" class="db-panel db-panel-closed"></div>
+
+<div id="db-delete-modal" class="db-modal-backdrop db-modal-hidden"
+     onclick="if(event.target===this)this.classList.add('db-modal-hidden')">
+  <div class="db-modal-box">
+    <div id="db-modal-body"></div>
+  </div>
+</div>
+
+{% endblock %}

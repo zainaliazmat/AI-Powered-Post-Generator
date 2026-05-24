@@ -1,0 +1,48 @@
+<article id="post-{{ post.id }}">
+
+  <p class="post-title">{{ post.article_title }}</p>
+
+  <div class="post-meta">
+    <a href="{{ post.article_url }}" target="_blank" rel="noopener noreferrer">↗ source</a>
+    <span class="dot">·</span>
+    <span>{{ post.created_at[:16] | replace("T", " ") }}</span>
+    {% if post.review_score %}
+      <span class="dot">·</span>
+      <span class="post-score">Score {{ post.review_score }}</span>
+    {% endif %}
+    <span class="dot">·</span>
+    {% if post.status in ['pending_review'] %}
+      <span class="badge badge-pending">{{ post.status | replace("_", " ") }}</span>
+    {% elif post.status == 'approved' %}
+      <span class="badge badge-approved">{{ post.status }}</span>
+    {% elif post.status == 'rejected' %}
+      <span class="badge badge-rejected">{{ post.status }}</span>
+    {% elif post.status == 'image_ready' %}
+      <span class="badge badge-image-ready">image ready</span>
+    {% else %}
+      <span class="badge badge-pending">{{ post.status | replace("_", " ") }}</span>
+    {% endif %}
+  </div>
+
+  {% if post.first_image %}
+    <img src="{{ post.first_image }}" alt="Slide 1 preview" class="post-image">
+  {% endif %}
+
+  {% if post.caption %}
+    <p class="post-caption">{{ post.caption }}</p>
+  {% endif %}
+
+  <div class="post-actions">
+    <button hx-post="/review/{{ post.id }}/approve"
+            hx-target="#post-{{ post.id }}"
+            hx-swap="outerHTML"
+            class="btn btn-approve">✓ Approve</button>
+    <button hx-get="/review/{{ post.id }}/reject-panel"
+            hx-target="#reject-panel-{{ post.id }}"
+            hx-swap="innerHTML"
+            class="btn btn-reject">✗ Reject</button>
+  </div>
+
+  <div id="reject-panel-{{ post.id }}"></div>
+
+</article>

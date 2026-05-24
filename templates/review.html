@@ -1,0 +1,30 @@
+{% set active = 'review' %}
+{% extends "base.html" %}
+{% block title %}Review Queue — InstaBot{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h2 class="page-title">Review Queue</h2>
+  <p class="page-subtitle">{{ total }} post{{ 's' if total != 1 }} pending</p>
+</div>
+
+{% if posts %}
+  <div class="post-list">
+    {% for post in posts %}
+      {% include "_post_card.html" %}
+    {% endfor %}
+  </div>
+
+  <nav class="pagination">
+    {% if page > 1 %}
+      <a href="/review?page={{ page - 1 }}&per_page={{ per_page }}" class="btn btn-ghost">← Previous</a>
+    {% endif %}
+    {% if has_next %}
+      <a href="/review?page={{ page + 1 }}&per_page={{ per_page }}" class="btn btn-ghost">Next →</a>
+    {% endif %}
+  </nav>
+{% else %}
+  <div class="empty-state">No posts pending review.</div>
+{% endif %}
+
+{% endblock %}

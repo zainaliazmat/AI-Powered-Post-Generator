@@ -1,0 +1,121 @@
+<h2>Row Editing — How should the edit form appear?</h2>
+<p class="subtitle">When the user clicks "Edit" on a row, where does the form open?</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Inline row editing</h3>
+      <p>The row expands in-place into editable fields. Save/Cancel buttons appear in the same row. No navigation or overlay — table stays visible.</p>
+      <div class="mockup" style="margin-top:12px">
+        <div class="mockup-header">Preview — row turns into a form</div>
+        <div class="mockup-body" style="padding:12px;min-height:140px">
+          <table style="width:100%;font-size:12px;border-collapse:collapse">
+            <tr style="color:#7d8590">
+              <th style="text-align:left;padding:5px 8px;border-bottom:1px solid #30363d">id</th>
+              <th style="text-align:left;padding:5px 8px;border-bottom:1px solid #30363d">key</th>
+              <th style="text-align:left;padding:5px 8px;border-bottom:1px solid #30363d">url</th>
+              <th style="text-align:left;padding:5px 8px;border-bottom:1px solid #30363d">method</th>
+              <th style="text-align:left;padding:5px 8px;border-bottom:1px solid #30363d">actions</th>
+            </tr>
+            <!-- normal row -->
+            <tr style="color:#e6edf3;border-bottom:1px solid #21262d">
+              <td style="padding:5px 8px">1</td>
+              <td style="padding:5px 8px">techcrunch</td>
+              <td style="padding:5px 8px;color:#7d8590">techcrunch.com/feed</td>
+              <td style="padding:5px 8px">rss</td>
+              <td style="padding:5px 8px"><span style="color:#58a6ff">Edit</span> · <span style="color:#f85149">Del</span></td>
+            </tr>
+            <!-- editing row -->
+            <tr style="background:#1c2128;border:1px solid #b8ff3a;border-radius:4px">
+              <td style="padding:5px 8px;color:#7d8590">2</td>
+              <td style="padding:5px 8px"><input style="background:#0d1117;border:1px solid #30363d;color:#e6edf3;border-radius:3px;padding:2px 5px;font-size:11px;width:80px" value="verge"></td>
+              <td style="padding:5px 8px"><input style="background:#0d1117;border:1px solid #30363d;color:#e6edf3;border-radius:3px;padding:2px 5px;font-size:11px;width:130px" value="theverge.com/rss"></td>
+              <td style="padding:5px 8px"><input style="background:#0d1117;border:1px solid #30363d;color:#e6edf3;border-radius:3px;padding:2px 5px;font-size:11px;width:50px" value="rss"></td>
+              <td style="padding:5px 8px">
+                <span style="background:#b8ff3a;color:#0d1117;border-radius:3px;padding:2px 8px;font-size:11px;font-weight:600;cursor:pointer">Save</span>
+                <span style="color:#7d8590;cursor:pointer;margin-left:6px">Cancel</span>
+              </td>
+            </tr>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Slide-in side panel</h3>
+      <p>Clicking Edit opens a panel from the right side of the screen with a proper form. Table stays visible behind it. Good for rows with many columns (like <code>generated_posts</code>).</p>
+      <div class="mockup" style="margin-top:12px">
+        <div class="mockup-header">Preview — panel slides in from right</div>
+        <div class="mockup-body" style="padding:0;min-height:160px;display:flex;position:relative">
+          <!-- table dimmed behind -->
+          <div style="flex:1;padding:12px;opacity:0.4">
+            <table style="width:100%;font-size:11px;border-collapse:collapse">
+              <tr style="color:#7d8590">
+                <td style="padding:4px 8px;border-bottom:1px solid #30363d">id</td>
+                <td style="padding:4px 8px;border-bottom:1px solid #30363d">key</td>
+                <td style="padding:4px 8px;border-bottom:1px solid #30363d">url</td>
+              </tr>
+              <tr><td style="padding:4px 8px;color:#e6edf3">1</td><td style="padding:4px 8px;color:#e6edf3">techcrunch</td><td style="padding:4px 8px;color:#7d8590">tc.com/feed</td></tr>
+              <tr style="background:#1c2128"><td style="padding:4px 8px;color:#e6edf3">2</td><td style="padding:4px 8px;color:#e6edf3">verge</td><td style="padding:4px 8px;color:#7d8590">verge.com/rss</td></tr>
+            </table>
+          </div>
+          <!-- side panel -->
+          <div style="width:240px;background:#161b22;border-left:1px solid #b8ff3a;padding:14px;flex-shrink:0">
+            <div style="font-size:13px;font-weight:600;color:#e6edf3;margin-bottom:12px">Edit row #2</div>
+            <div style="margin-bottom:8px">
+              <div style="font-size:10px;color:#7d8590;margin-bottom:3px">key</div>
+              <input style="width:100%;background:#0d1117;border:1px solid #30363d;color:#e6edf3;border-radius:4px;padding:4px 8px;font-size:12px" value="verge">
+            </div>
+            <div style="margin-bottom:8px">
+              <div style="font-size:10px;color:#7d8590;margin-bottom:3px">url</div>
+              <input style="width:100%;background:#0d1117;border:1px solid #30363d;color:#e6edf3;border-radius:4px;padding:4px 8px;font-size:12px" value="theverge.com/rss">
+            </div>
+            <div style="margin-bottom:12px">
+              <div style="font-size:10px;color:#7d8590;margin-bottom:3px">method</div>
+              <input style="width:100%;background:#0d1117;border:1px solid #30363d;color:#e6edf3;border-radius:4px;padding:4px 8px;font-size:12px" value="rss">
+            </div>
+            <button style="width:100%;background:#b8ff3a;color:#0d1117;border:none;border-radius:4px;padding:6px;font-size:12px;font-weight:600;cursor:pointer">Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Modal dialog</h3>
+      <p>A centered modal pops up over the table with all fields. Standard approach — clear focus, works on all screen sizes. Backdrop dims the table behind it.</p>
+      <div class="mockup" style="margin-top:12px">
+        <div class="mockup-header">Preview — modal over dimmed table</div>
+        <div class="mockup-body" style="padding:0;min-height:160px;position:relative">
+          <div style="position:absolute;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center">
+            <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px;width:260px">
+              <div style="font-size:13px;font-weight:600;color:#e6edf3;margin-bottom:12px">Edit row #2 — sources</div>
+              <div style="margin-bottom:8px">
+                <div style="font-size:10px;color:#7d8590;margin-bottom:3px">key</div>
+                <input style="width:100%;background:#0d1117;border:1px solid #30363d;color:#e6edf3;border-radius:4px;padding:4px 8px;font-size:12px" value="verge">
+              </div>
+              <div style="margin-bottom:8px">
+                <div style="font-size:10px;color:#7d8590;margin-bottom:3px">url</div>
+                <input style="width:100%;background:#0d1117;border:1px solid #30363d;color:#e6edf3;border-radius:4px;padding:4px 8px;font-size:12px" value="theverge.com">
+              </div>
+              <div style="margin-bottom:12px">
+                <div style="font-size:10px;color:#7d8590;margin-bottom:3px">method</div>
+                <input style="width:100%;background:#0d1117;border:1px solid #30363d;color:#e6edf3;border-radius:4px;padding:4px 8px;font-size:12px" value="rss">
+              </div>
+              <div style="display:flex;gap:8px">
+                <button style="flex:1;background:#b8ff3a;color:#0d1117;border:none;border-radius:4px;padding:6px;font-size:12px;font-weight:600">Save</button>
+                <button style="flex:1;background:transparent;color:#7d8590;border:1px solid #30363d;border-radius:4px;padding:6px;font-size:12px">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

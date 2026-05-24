@@ -70,6 +70,11 @@ def cmd_scrape() -> None:
 
         per_source_stats[key] = (len(fresh) + len(undated), len(old), len(undated))
 
+    # Fetch og:image for each article (used by Pillow renderer)
+    from src.shared import fetch_og_image
+    for article in all_articles:
+        article["og_image_url"] = fetch_og_image(article.get("url", ""))
+
     # Write JSON
     out_path = Path("data/latest_articles.json")
     out_path.parent.mkdir(exist_ok=True)
@@ -236,6 +241,7 @@ def cmd_generate(force_refresh: bool = False) -> None:
             continue
         article = r["article"]
         carousel = r["carousel"]
+        carousel["og_image_url"] = article.get("og_image_url", "")
         ok = save_generated_post(
             article_hash=gen._cache_key(article),
             article_url=article.get("url", ""),
@@ -276,7 +282,7 @@ def cmd_fix(key: str) -> None:
 
 def cmd_images(post_id: int) -> None:
     from src.db import get_conn, save_image_paths
-    from src.image_gen import generate_for_post
+    from src.ImageGen.image_gen import generate_for_post
 
     with get_conn() as conn:
         row = conn.execute(
@@ -375,11 +381,11 @@ def cmd_db_images() -> None:
     print(f"\n  {len(rows)} post(s) with images.")
 
 
-def cmd_run(force: bool = False) -> None:
+def cmd_run(force: bool = False, run_id: int | None = None) -> None:
     from dotenv import load_dotenv
     load_dotenv()
     from src.orchestrator import run_pipeline
-    run_pipeline(force=force)
+    run_pipeline(force=force, run_id=run_id)
 
 
 # ---------------------------------------------------------------------------
@@ -404,8 +410,9 @@ def main() -> None:
     parser.add_argument("--dedup",   action="store_true", help="Deduplicate latest_articles.json → data/deduped_articles.json")
     parser.add_argument("--generate",      action="store_true", help="Generate carousels from deduped_articles.json → generated_posts table")
     parser.add_argument("--force-refresh", action="store_true", help="Ignore carousel cache and regenerate (use with --generate)")
-    parser.add_argument("--run",   action="store_true", help="Run full pipeline: scrape → dedup → generate → review → save")
+    parser.add_argument("--run",   action="store_true", help="Run full pipeline: scrape → dedup → generate → review → save → images")
     parser.add_argument("--force", action="store_true", help="Force-refresh carousel generation (use with --run)")
+    parser.add_argument("--run-id", type=int, default=None, help=argparse.SUPPRESS)
     parser.add_argument("--add",     action="store_true", help="Discover and save a new source")
     parser.add_argument("--url",     type=str,            help="URL for --add")
     parser.add_argument("--list",    action="store_true", help="List all active sources")
@@ -422,7 +429,7 @@ def main() -> None:
     setup_logging(args.verbose)
 
     if args.run:
-        cmd_run(force=args.force)
+        cmd_run(force=args.force, run_id=args.run_id)
     elif args.scrape:
         cmd_scrape()
     elif args.dedup:

@@ -291,3 +291,47 @@ def extract_articles(soup: BeautifulSoup, page_url: str, source_key: str = "") -
         ))
 
     return articles
+
+
+# ---------------------------------------------------------------------------
+# og:image extraction
+# ---------------------------------------------------------------------------
+
+_UNSAFE_HOSTS = frozenset({
+    "localhost", "127.0.0.1", "0.0.0.0", "169.254.169.254",
+})
+
+
+def _is_safe_url(url: str) -> bool:
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return False
+        host = (parsed.hostname or "").lower()
+        if host in _UNSAFE_HOSTS:
+            return False
+        if host.endswith(".local"):
+            return False
+        return True
+    except Exception:
+        return False
+
+
+def fetch_og_image(url: str) -> str:
+    """Return the og:image (or twitter:image) URL for *url*, or '' on any failure."""
+    if not _is_safe_url(url):
+        return ""
+    try:
+        resp = requests.get(url, timeout=5, headers=HEADERS)
+        if resp.status_code != 200:
+            return ""
+        soup = BeautifulSoup(resp.text, "lxml")
+        og = soup.find("meta", property="og:image")
+        if og and og.get("content"):
+            return og["content"]
+        tw = soup.find("meta", attrs={"name": "twitter:image"})
+        if tw and tw.get("content"):
+            return tw["content"]
+        return ""
+    except Exception:
+        return ""

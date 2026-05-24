@@ -1,0 +1,73 @@
+{% set active = 'database' %}
+{% extends "base.html" %}
+{% block title %}Database — InstaBot{% endblock %}
+{% block content %}
+
+{% set meta = {
+  'sources':            {'role': 'Ingest',     'kind': 'config',  'desc': 'Active scraping sources'},
+  'crashed_sources':    {'role': 'Quarantine', 'kind': 'error',   'desc': 'Sources awaiting --fix'},
+  'generated_posts':    {'role': 'Output',     'kind': 'content', 'desc': 'Carousels in the queue'},
+  'pipeline_runs':      {'role': 'Telemetry',  'kind': 'run',     'desc': 'Run-level pipeline records'},
+  'pipeline_run_steps': {'role': 'Telemetry',  'kind': 'step',    'desc': 'Per-node step records'},
+  'publish_queue':      {'role': 'Schedule',   'kind': 'queue',   'desc': 'Posts scheduled to publish'},
+} %}
+
+{% set total_rows = tables | sum(attribute='row_count') %}
+{% set row_counts = tables | map(attribute='row_count') | list %}
+{% set max_rows = (row_counts | max) if row_counts else 0 %}
+
+<header class="db-index-header">
+  <div class="db-index-eyebrow">
+    <span class="db-index-eyebrow-mark">DB</span>
+    <span class="db-index-eyebrow-text">pipeline.db</span>
+    <span class="db-index-eyebrow-dot">·</span>
+    <span class="db-index-eyebrow-mode">SQLite · WAL</span>
+  </div>
+
+  <h1 class="db-index-title">
+    Database<span class="db-index-title-accent">.</span>
+  </h1>
+
+  <div class="db-index-meta">
+    <span><strong>{{ tables | length }}</strong> table{{ 's' if tables | length != 1 }}</span>
+    <span class="db-index-meta-sep">/</span>
+    <span><strong>{{ '{:,}'.format(total_rows) }}</strong> total row{{ 's' if total_rows != 1 }}</span>
+    <span class="db-index-meta-sep">/</span>
+    <span>schema in <code>src/db.py</code></span>
+  </div>
+</header>
+
+<div class="db-index-grid">
+{% for t in tables %}
+  {% set m = meta.get(t.name, {'role': 'Table', 'kind': 'default', 'desc': 'SQLite table'}) %}
+  {% set fill_pct = ((t.row_count / max_rows) * 100) if max_rows else 0 %}
+  <a href="/database/{{ t.name }}" class="db-card db-card-{{ m.kind }}{% if t.row_count == 0 %} db-card-empty{% endif %}">
+    <div class="db-card-head">
+      <span class="db-card-no">{{ '%02d' | format(loop.index) }}</span>
+      <span class="db-card-role">{{ m.role }}</span>
+    </div>
+
+    <div class="db-card-body">
+      <h2 class="db-card-name">{{ t.name }}</h2>
+      <p class="db-card-desc">{{ m.desc }}</p>
+    </div>
+
+    <div class="db-card-counter">
+      <span class="db-card-rows">{{ '{:,}'.format(t.row_count) }}</span>
+      <span class="db-card-rows-label">row{{ 's' if t.row_count != 1 }}</span>
+      <span class="db-card-cols">{{ t.col_count }}<span class="db-card-cols-unit">c</span></span>
+    </div>
+
+    <div class="db-card-fill" aria-hidden="true">
+      <span class="db-card-fill-bar" style="width: {{ fill_pct }}%"></span>
+    </div>
+
+    <div class="db-card-foot">
+      <span class="db-card-cta">Open table</span>
+      <span class="db-card-arrow" aria-hidden="true">→</span>
+    </div>
+  </a>
+{% endfor %}
+</div>
+
+{% endblock %}

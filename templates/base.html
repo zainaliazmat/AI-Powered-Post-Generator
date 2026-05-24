@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}InstaBot{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+</head>
+<body class="sidebar-layout">
+  <script>
+    if (localStorage.getItem('sidebar-collapsed') === '1') {
+      document.body.classList.add('sidebar-collapsed');
+    }
+  </script>
+
+  <aside id="sidebar" aria-label="Main navigation">
+    <div class="sidebar-header">
+      <span class="sidebar-logo-full" aria-hidden="true">
+        <span class="logo-mark">⚡</span>
+        <span class="logo-text">InstaBot</span>
+      </span>
+      <span class="sidebar-logo-icon" aria-label="InstaBot">⚡</span>
+    </div>
+
+    <nav class="sidebar-nav" aria-label="Primary">
+      <a href="/" class="sidebar-link {% if active == 'dashboard' %}active{% endif %}"
+         aria-label="Dashboard">
+        <span class="sidebar-icon" aria-hidden="true">⊞</span>
+        <span class="sidebar-label">Dashboard</span>
+      </a>
+      <a href="/review" class="sidebar-link {% if active == 'review' %}active{% endif %}"
+         aria-label="Review Queue">
+        <span class="sidebar-icon" aria-hidden="true">☰</span>
+        <span class="sidebar-label">Review Queue</span>
+      </a>
+      <a href="/database" class="sidebar-link {% if active == 'database' %}active{% endif %}"
+         aria-label="Database">
+        <span class="sidebar-icon" aria-hidden="true">⛁</span>
+        <span class="sidebar-label">Database</span>
+      </a>
+    </nav>
+
+    <button id="sidebar-toggle" onclick="toggleSidebar()"
+            aria-label="Collapse sidebar" aria-expanded="true">
+      <span class="toggle-icon-collapse" aria-hidden="true">‹</span>
+      <span class="toggle-icon-expand" aria-hidden="true">›</span>
+    </button>
+  </aside>
+
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+
+  <script>
+    function toggleSidebar() {
+      const collapsed = document.body.classList.toggle('sidebar-collapsed');
+      localStorage.setItem('sidebar-collapsed', collapsed ? '1' : '0');
+      const btn = document.getElementById('sidebar-toggle');
+      if (btn) {
+        btn.setAttribute('aria-expanded', String(!collapsed));
+        btn.setAttribute('aria-label', collapsed ? 'Expand sidebar' : 'Collapse sidebar');
+      }
+    }
+
+    document.body.addEventListener('htmx:responseError', function(evt) {
+      var status = evt.detail.xhr.status;
+      if (status === 409) {
+        alert('This post was already reviewed — refresh the page.');
+      } else {
+        alert('Server error (' + status + '). Check the terminal.');
+      }
+    });
+    document.body.addEventListener('htmx:sendError', function() {
+      alert('Cannot reach server — is uvicorn running?');
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,99 @@
+<h2>Large / JSON columns in the table</h2>
+<p class="subtitle"><code>carousel_json</code> in <em>generated_posts</em> is a big JSON blob. How should long/JSON columns render in the row?</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Truncated pill</h3>
+      <p>Show a short grey pill like <code>[JSON]</code> or <code>{"slides": 8…}</code>. Full content only appears in the Edit side panel. Table stays dense and scannable.</p>
+      <div class="mockup" style="margin-top:10px">
+        <div class="mockup-header">Preview</div>
+        <div class="mockup-body" style="padding:10px;min-height:90px">
+          <table style="width:100%;font-size:12px;border-collapse:collapse">
+            <tr style="color:#7d8590">
+              <th style="padding:4px 8px;text-align:left;border-bottom:1px solid #30363d">id</th>
+              <th style="padding:4px 8px;text-align:left;border-bottom:1px solid #30363d">article_title</th>
+              <th style="padding:4px 8px;text-align:left;border-bottom:1px solid #30363d">carousel_json</th>
+              <th style="padding:4px 8px;text-align:left;border-bottom:1px solid #30363d">status</th>
+            </tr>
+            <tr style="color:#e6edf3">
+              <td style="padding:5px 8px">1</td>
+              <td style="padding:5px 8px">OpenAI launches GPT-5</td>
+              <td style="padding:5px 8px"><span style="background:#21262d;color:#7d8590;border-radius:3px;padding:2px 7px;font-size:10px;font-family:monospace">{slides: 8…}</span></td>
+              <td style="padding:5px 8px"><span style="color:#d29922">pending</span></td>
+            </tr>
+            <tr style="color:#e6edf3;background:#1c2128">
+              <td style="padding:5px 8px">2</td>
+              <td style="padding:5px 8px">Apple Vision Pro 2 announced</td>
+              <td style="padding:5px 8px"><span style="background:#21262d;color:#7d8590;border-radius:3px;padding:2px 7px;font-size:10px;font-family:monospace">{slides: 8…}</span></td>
+              <td style="padding:5px 8px"><span style="color:#3fb950">approved</span></td>
+            </tr>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Hidden — edit panel only</h3>
+      <p>Long columns like <code>carousel_json</code> are hidden from the table entirely. A column visibility toggle lets you show/hide them. They're fully editable in the side panel as a textarea. Cleanest table view.</p>
+      <div class="mockup" style="margin-top:10px">
+        <div class="mockup-header">Preview — table hides bulk columns by default</div>
+        <div class="mockup-body" style="padding:10px;min-height:90px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <span style="font-size:11px;color:#7d8590">Columns:</span>
+            <span style="background:#b8ff3a;color:#0d1117;border-radius:3px;padding:1px 7px;font-size:10px;font-weight:600">id</span>
+            <span style="background:#b8ff3a;color:#0d1117;border-radius:3px;padding:1px 7px;font-size:10px;font-weight:600">article_title</span>
+            <span style="background:#b8ff3a;color:#0d1117;border-radius:3px;padding:1px 7px;font-size:10px;font-weight:600">status</span>
+            <span style="background:#21262d;color:#7d8590;border-radius:3px;padding:1px 7px;font-size:10px">carousel_json ✕</span>
+            <span style="background:#21262d;color:#7d8590;border-radius:3px;padding:1px 7px;font-size:10px">image_paths ✕</span>
+          </div>
+          <table style="width:100%;font-size:12px;border-collapse:collapse">
+            <tr style="color:#7d8590">
+              <th style="padding:4px 8px;text-align:left;border-bottom:1px solid #30363d">id</th>
+              <th style="padding:4px 8px;text-align:left;border-bottom:1px solid #30363d">article_title</th>
+              <th style="padding:4px 8px;text-align:left;border-bottom:1px solid #30363d">status</th>
+              <th style="padding:4px 8px;text-align:left;border-bottom:1px solid #30363d">actions</th>
+            </tr>
+            <tr style="color:#e6edf3">
+              <td style="padding:5px 8px">1</td>
+              <td style="padding:5px 8px">OpenAI launches GPT-5</td>
+              <td style="padding:5px 8px"><span style="color:#d29922">pending</span></td>
+              <td style="padding:5px 8px"><span style="color:#58a6ff">Edit</span> · <span style="color:#f85149">Del</span></td>
+            </tr>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Truncated text</h3>
+      <p>Show the first ~60 chars of any long column, clipped with an ellipsis. No special treatment — every column is visible, just clipped at a max width. Simple, no extra UI.</p>
+      <div class="mockup" style="margin-top:10px">
+        <div class="mockup-header">Preview</div>
+        <div class="mockup-body" style="padding:10px;min-height:90px">
+          <table style="width:100%;font-size:11px;border-collapse:collapse;table-layout:fixed">
+            <tr style="color:#7d8590">
+              <th style="padding:4px 8px;text-align:left;border-bottom:1px solid #30363d;width:30px">id</th>
+              <th style="padding:4px 8px;text-align:left;border-bottom:1px solid #30363d;width:160px">article_title</th>
+              <th style="padding:4px 8px;text-align:left;border-bottom:1px solid #30363d">carousel_json</th>
+              <th style="padding:4px 8px;text-align:left;border-bottom:1px solid #30363d;width:60px">status</th>
+            </tr>
+            <tr style="color:#e6edf3">
+              <td style="padding:5px 8px">1</td>
+              <td style="padding:5px 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">OpenAI launches GPT-5</td>
+              <td style="padding:5px 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#7d8590;font-family:monospace;font-size:10px">{"slides":[{"caption":"OpenAI just dropped GPT-5, their most powerful…</td>
+              <td style="padding:5px 8px;color:#d29922">pending</td>
+            </tr>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

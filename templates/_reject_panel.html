@@ -1,0 +1,19 @@
+<form hx-post="/review/{{ post_id }}/reject"
+      hx-target="#reject-panel-{{ post_id }}"
+      hx-swap="innerHTML"
+      class="reject-form">
+  {% if error %}
+    <p class="reject-error">{{ error }}</p>
+  {% endif %}
+  <textarea name="reason"
+            rows="3"
+            placeholder="Why is this post being rejected? (min 10 characters)"></textarea>
+  <div class="reject-form-actions">
+    <button type="submit" class="btn btn-danger">Confirm Reject</button>
+    <button type="button"
+            hx-get="/review/{{ post_id }}/reject-panel-clear"
+            hx-target="#reject-panel-{{ post_id }}"
+            hx-swap="innerHTML"
+            class="btn btn-ghost">Cancel</button>
+  </div>
+</form>

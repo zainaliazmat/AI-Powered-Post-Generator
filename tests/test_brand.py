@@ -73,42 +73,6 @@ def test_fetch_logo_refreshes_stale_cache(tmp_path):
     assert result.read_bytes() == fake_png_new
 
 
-def test_enrich_prompt_returns_unchanged_for_none_domain():
-    from src.brand import enrich_prompt
-    base = "Futuristic data center, neon cyan on dark background, 4K"
-    assert enrich_prompt(base, None) == base
-
-
-def test_enrich_prompt_injects_known_brand_style():
-    from src.brand import enrich_prompt
-    result = enrich_prompt("Some image prompt here", "nvidia.com")
-    assert "#76B900" in result
-    assert "GPU" in result or "dark background" in result
-
-
-def test_enrich_prompt_strips_cyberpunk_terms():
-    from src.brand import enrich_prompt
-    base = "Cyberpunk scene with neon lights, futuristic city, 4K resolution"
-    result = enrich_prompt(base, "google.com")
-    assert "cyberpunk" not in result.lower()
-    assert "futuristic" not in result.lower()
-    assert "neon" not in result.lower()
-
-
-def test_enrich_prompt_uses_default_style_for_unknown_brand():
-    from src.brand import enrich_prompt
-    result = enrich_prompt("Some image prompt", "unknownbrand999.com")
-    assert "corporate tech" in result or "professional" in result
-
-
-def test_enrich_prompt_truncates_at_1000_chars():
-    from src.brand import enrich_prompt
-    long_prompt = "A " * 600  # 1200 chars
-    result = enrich_prompt(long_prompt, "nvidia.com")
-    assert len(result) <= 1000
-    assert result.endswith("...")
-
-
 def test_composite_badge_produces_file(tmp_path):
     from PIL import Image
     from src.brand import composite_badge

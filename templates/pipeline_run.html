@@ -1,0 +1,66 @@
+{% set active = 'dashboard' %}
+{% extends "base.html" %}
+{% block title %}Run #{{ run.id }} — InstaBot{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h2 class="page-title">Pipeline Run #{{ run.id }}</h2>
+  <a href="/" class="btn btn-secondary btn-sm">← Dashboard</a>
+</div>
+
+<div class="pipeline-run-detail">
+  <div class="pipeline-run-meta">
+    <span class="pipeline-run-trigger">{{ run.trigger }}</span>
+    <span class="pipeline-run-status pipeline-status-{{ run.status }}">{{ run.status }}</span>
+    <span class="pipeline-run-started">started {{ (run.started_at or "")[:19].replace("T", " ") }}</span>
+    {% if run.finished_at %}
+      <span class="pipeline-run-finished">finished {{ run.finished_at[:19].replace("T", " ") }}</span>
+    {% endif %}
+  </div>
+
+  {% if run.stop_reason %}
+    <p class="pipeline-run-reason">Stop reason: {{ run.stop_reason }}</p>
+  {% endif %}
+  {% if run.error %}
+    <details class="pipeline-run-error">
+      <summary>Run-level error</summary>
+      <pre>{{ run.error }}</pre>
+    </details>
+  {% endif %}
+
+  <table class="pipeline-step-table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Node</th>
+        <th>Status</th>
+        <th>Progress</th>
+        <th>Started</th>
+        <th>Finished</th>
+        <th>Error</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for step in steps %}
+      <tr class="pipeline-step-row pipeline-status-{{ step.status }}">
+        <td>{{ step.seq }}</td>
+        <td>{{ step.node }}</td>
+        <td>{{ step.status }}</td>
+        <td>{{ step.progress or "—" }}</td>
+        <td>{{ (step.started_at or "—")[:19].replace("T", " ") }}</td>
+        <td>{{ (step.finished_at or "—")[:19].replace("T", " ") }}</td>
+        <td>
+          {% if step.error %}
+            <details>
+              <summary>view</summary>
+              <pre>{{ step.error }}</pre>
+            </details>
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

@@ -1,0 +1,32 @@
+<tr id="db-row-{{ row.id }}">
+  {% for col in columns %}
+  <td>
+    {% set val = row.get(col.name) %}
+    {% if val is none %}
+      <span class="db-null">NULL</span>
+    {% elif val | string | length > 100 or (val | string)[:1] == '{' or (val | string)[:1] == '[' %}
+      {% if (val | string)[:1] == '[' %}
+        <span class="db-pill">[&hellip;]</span>
+      {% else %}
+        <span class="db-pill">{&hellip;}</span>
+      {% endif %}
+    {% elif col.name == 'status' and val in ('pending_review', 'approved', 'rejected', 'published', 'failed', 'image_ready') %}
+      <span class="status-badge status-{{ val | replace('_', '-') }}">{{ val }}</span>
+    {% else %}
+      {{ val }}
+    {% endif %}
+  </td>
+  {% endfor %}
+  <td class="db-actions">
+    <span hx-get="/database/{{ table }}/{{ row.id }}/panel"
+          hx-target="#db-panel"
+          hx-swap="innerHTML"
+          class="db-action-link db-action-edit">Edit</span>
+    ·
+    <span hx-get="/database/{{ table }}/{{ row.id }}/delete-confirm"
+          hx-target="#db-modal-body"
+          hx-swap="innerHTML"
+          onclick="document.getElementById('db-delete-modal').classList.remove('db-modal-hidden')"
+          class="db-action-link db-action-delete">Delete</span>
+  </td>
+</tr>

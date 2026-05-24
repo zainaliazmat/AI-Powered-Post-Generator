@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import sqlite3
 from pathlib import Path
 
@@ -8,6 +9,8 @@ from .shared import now_iso
 logger = logging.getLogger(__name__)
 
 DB_PATH = Path(__file__).parent.parent / "data" / "pipeline.db"
+
+_PIPELINE_STEPS = ("scrape", "dedup", "generate", "review", "revise", "save_draft", "images")
 
 _SOURCE_COLUMNS = "key, url, method, feed_url, rsshub_slug, pw_wait_for, added_at, last_fetched"
 
@@ -18,6 +21,7 @@ def get_conn() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("PRAGMA busy_timeout=5000")
     return conn
 
 
@@ -65,6 +69,8 @@ def init_db() -> None:
         """)
     migrate_review_columns()
     migrate_image_columns()
+    migrate_rejection_reason()
+    migrate_pipeline_runs()
 
 
 def migrate_review_columns() -> None:
@@ -98,6 +104,58 @@ def migrate_image_columns() -> None:
                 "ALTER TABLE generated_posts ADD COLUMN image_paths TEXT"
             )
             logger.info("Added image_paths column to generated_posts")
+
+
+def migrate_rejection_reason() -> None:
+    """Add rejection_reason column if it doesn't exist. Safe to call repeatedly."""
+    with get_conn() as conn:
+        existing = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(generated_posts)").fetchall()
+        }
+        if "rejection_reason" not in existing:
+            conn.execute(
+                "ALTER TABLE generated_posts ADD COLUMN rejection_reason TEXT"
+            )
+            logger.info("Added rejection_reason column to generated_posts")
+
+
+def migrate_pipeline_runs() -> None:
+    """Create pipeline_runs and pipeline_run_steps tables + indexes."""
+    with get_conn() as conn:
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS pipeline_runs (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                trigger       TEXT    NOT NULL,
+                status        TEXT    NOT NULL DEFAULT 'running',
+                pid           INTEGER,
+                started_at    TEXT    NOT NULL,
+                finished_at   TEXT,
+                error         TEXT,
+                stop_reason   TEXT
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_pipeline_runs_started
+                ON pipeline_runs(started_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_pipeline_runs_status
+                ON pipeline_runs(status);
+
+            CREATE TABLE IF NOT EXISTS pipeline_run_steps (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id        INTEGER NOT NULL REFERENCES pipeline_runs(id) ON DELETE CASCADE,
+                node          TEXT    NOT NULL,
+                seq           INTEGER NOT NULL,
+                status        TEXT    NOT NULL DEFAULT 'pending',
+                progress      TEXT,
+                started_at    TEXT,
+                finished_at   TEXT,
+                error         TEXT,
+                UNIQUE(run_id, node)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_pipeline_run_steps_run
+                ON pipeline_run_steps(run_id);
+        """)
 
 
 # ---------------------------------------------------------------------------
@@ -286,6 +344,251 @@ def save_image_paths(post_id: int, image_paths: list[str]) -> bool:
             (json.dumps(image_paths), post_id),
         )
     return True
+
+
+def get_post_counts() -> dict[str, int]:
+    """Row counts by status plus a 'total' key."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT status, COUNT(*) FROM generated_posts GROUP BY status"
+        ).fetchall()
+        total = conn.execute(
+            "SELECT COUNT(*) FROM generated_posts"
+        ).fetchone()[0]
+    counts: dict[str, int] = {
+        "pending_review": 0,
+        "image_ready": 0,
+        "approved": 0,
+        "rejected": 0,
+        "published": 0,
+        "failed": 0,
+    }
+    for status, n in rows:
+        if status in counts:
+            counts[status] = n
+    counts["total"] = total
+    return counts
+
+
+def get_post(post_id: int) -> dict | None:
+    """Fetch a single post by id. Returns None if not found."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM generated_posts WHERE id = ?", (post_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def approve_post(post_id: int) -> bool:
+    """Set status='approved'. Returns False if post is already reviewed."""
+    with get_conn() as conn:
+        cur = conn.execute(
+            """UPDATE generated_posts
+               SET status = 'approved', reviewed_at = ?
+               WHERE id = ? AND status IN ('pending_review', 'image_ready')""",
+            (now_iso(), post_id),
+        )
+        return cur.rowcount > 0
+
+
+def reject_post(post_id: int, reason: str) -> bool:
+    """Set status='rejected' and save reason. Returns False if already reviewed."""
+    with get_conn() as conn:
+        cur = conn.execute(
+            """UPDATE generated_posts
+               SET status = 'rejected', rejection_reason = ?, reviewed_at = ?
+               WHERE id = ? AND status IN ('pending_review', 'image_ready')""",
+            (reason, now_iso(), post_id),
+        )
+        return cur.rowcount > 0
+
+
+def get_review_queue(limit: int = 50, offset: int = 0) -> list[dict]:
+    """Posts pending review, newest first, paginated."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT * FROM generated_posts
+               WHERE status IN ('pending_review', 'image_ready')
+               ORDER BY created_at DESC
+               LIMIT ? OFFSET ?""",
+            (limit, offset),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# pipeline_runs / pipeline_run_steps
+# ---------------------------------------------------------------------------
+
+def create_pipeline_run(trigger: str) -> int | None:
+    """Atomically claim the single-run slot. Returns the new run id, or None
+    if another run is already active. On success, seeds 7 pending step rows."""
+    started = now_iso()
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO pipeline_runs (trigger, status, started_at)
+            SELECT ?, 'running', ?
+            WHERE NOT EXISTS (
+                SELECT 1 FROM pipeline_runs WHERE status='running'
+            )
+            """,
+            (trigger, started),
+        )
+        if cur.rowcount == 0:
+            return None
+        run_id = cur.lastrowid
+        conn.executemany(
+            "INSERT INTO pipeline_run_steps (run_id, node, seq, status) "
+            "VALUES (?, ?, ?, 'pending')",
+            [(run_id, node, seq) for seq, node in enumerate(_PIPELINE_STEPS, start=1)],
+        )
+    return run_id
+
+
+def update_run(run_id: int, **fields) -> None:
+    """Generic field update on pipeline_runs."""
+    if not fields:
+        return
+    set_clause = ", ".join(f"{k} = ?" for k in fields)
+    with get_conn() as conn:
+        conn.execute(
+            f"UPDATE pipeline_runs SET {set_clause} WHERE id = ?",
+            (*fields.values(), run_id),
+        )
+
+
+def update_run_step(run_id: int, node: str, **fields) -> None:
+    """Generic field update on pipeline_run_steps, scoped to (run_id, node)."""
+    if not fields:
+        return
+    set_clause = ", ".join(f"{k} = ?" for k in fields)
+    with get_conn() as conn:
+        conn.execute(
+            f"UPDATE pipeline_run_steps SET {set_clause} "
+            "WHERE run_id = ? AND node = ?",
+            (*fields.values(), run_id, node),
+        )
+
+
+def cancel_running_step(run_id: int) -> None:
+    """Mark the currently 'running' step (if any) as 'cancelled'."""
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE pipeline_run_steps "
+            "SET status = 'cancelled', finished_at = ? "
+            "WHERE run_id = ? AND status = 'running'",
+            (now_iso(), run_id),
+        )
+
+
+def finish_pipeline_run(
+    run_id: int,
+    status: str,
+    error: str | None = None,
+    stop_reason: str | None = None,
+) -> None:
+    """Set terminal fields on a run row; clear pid."""
+    with get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE pipeline_runs
+            SET status = ?, finished_at = ?, error = ?, stop_reason = ?, pid = NULL
+            WHERE id = ?
+            """,
+            (status, now_iso(), error, stop_reason, run_id),
+        )
+
+
+def get_active_run() -> dict | None:
+    """Most recent run with status='running'. None if no active run."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM pipeline_runs WHERE status = 'running' "
+            "ORDER BY started_at DESC LIMIT 1"
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def get_latest_run() -> dict | None:
+    """Most recent run by started_at."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM pipeline_runs ORDER BY started_at DESC LIMIT 1"
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def get_run(run_id: int) -> dict | None:
+    """Single run by id."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM pipeline_runs WHERE id = ?", (run_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def get_run_steps(run_id: int) -> list[dict]:
+    """Step rows for one run, ordered by seq."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM pipeline_run_steps WHERE run_id = ? ORDER BY seq",
+            (run_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_recent_runs(limit: int = 5) -> list[dict]:
+    """Last N runs, newest first."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM pipeline_runs ORDER BY started_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def _pid_alive(pid: int | None) -> bool:
+    if pid is None:
+        return False
+    try:
+        os.kill(pid, 0)
+    except (ProcessLookupError, PermissionError):
+        return False
+    except OSError:
+        return False
+    return True
+
+
+def reconcile_stale_runs() -> int:
+    """For each 'running' row, check if its PID is alive. If dead (or NULL),
+    mark the run as 'failed' and any 'running' step as 'failed'. Returns count."""
+    err = "subprocess died without cleanup"
+    reconciled = 0
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, pid FROM pipeline_runs WHERE status = 'running'"
+        ).fetchall()
+        now = now_iso()
+        for row in rows:
+            if _pid_alive(row["pid"]):
+                continue
+            conn.execute(
+                """
+                UPDATE pipeline_runs
+                SET status = 'failed', finished_at = ?, error = ?, pid = NULL
+                WHERE id = ?
+                """,
+                (now, err, row["id"]),
+            )
+            conn.execute(
+                "UPDATE pipeline_run_steps "
+                "SET status = 'failed', error = ?, finished_at = ? "
+                "WHERE run_id = ? AND status = 'running'",
+                (err, now, row["id"]),
+            )
+            reconciled += 1
+    return reconciled
 
 
 # ---------------------------------------------------------------------------

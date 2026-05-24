@@ -1,0 +1,87 @@
+<h2>Sidebar Layout — Which approach?</h2>
+<p class="subtitle">Pick the sidebar style that fits the dashboard best. All three remove the top header.</p>
+
+<div class="cards">
+
+  <!-- Option A -->
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#0d1117;padding:12px;font-family:monospace;font-size:11px;min-height:160px;display:flex;gap:0;">
+      <!-- Collapsed sidebar strip -->
+      <div style="width:44px;background:#161b22;border-right:1px solid #b8ff3a33;display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:16px;">
+        <span style="color:#b8ff3a;font-size:16px;">⚡</span>
+        <span style="color:#aaa;font-size:13px;">⊞</span>
+        <span style="color:#aaa;font-size:13px;">☰</span>
+        <div style="flex:1"></div>
+        <span style="color:#444;font-size:13px;">›</span>
+      </div>
+      <!-- Main content -->
+      <div style="flex:1;padding:10px;color:#ccc;">
+        <div style="font-size:10px;color:#b8ff3a;margin-bottom:8px;">Dashboard</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
+          <div style="background:#1a2a1a;border:1px solid #2a4a2a;border-radius:4px;padding:6px;font-size:10px;color:#66ff66;">3<br><span style="color:#555;font-size:8px;">Pending</span></div>
+          <div style="background:#161b22;border:1px solid #333;border-radius:4px;padding:6px;font-size:10px;color:#8888ff;">12<br><span style="color:#555;font-size:8px;">Total</span></div>
+        </div>
+        <div style="background:#161b22;border:1px solid #333;border-radius:4px;padding:6px;font-size:9px;color:#777;">Pipeline status table...</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Icon-only strip, expands on click</h3>
+      <p>Sidebar stays collapsed as a narrow icon strip. Clicking the arrow or a toggle button expands it to show labels. Like VS Code's activity bar.</p>
+    </div>
+  </div>
+
+  <!-- Option B -->
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#0d1117;padding:12px;font-family:monospace;font-size:11px;min-height:160px;display:flex;gap:0;position:relative;overflow:hidden;">
+      <!-- Hamburger button -->
+      <div style="position:absolute;top:8px;left:8px;width:28px;height:28px;background:#161b22;border:1px solid #b8ff3a55;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#b8ff3a;font-size:14px;z-index:2;">☰</div>
+      <!-- Slide-over overlay -->
+      <div style="position:absolute;top:0;left:0;width:140px;height:100%;background:#161b22cc;backdrop-filter:blur(4px);border-right:1px solid #b8ff3a33;padding:40px 0 10px;z-index:1;display:flex;flex-direction:column;gap:4px;">
+        <div style="padding:6px 12px;color:#b8ff3a;font-weight:bold;font-size:11px;">⚡ InstaBot</div>
+        <div style="padding:6px 12px;background:#b8ff3a22;color:#b8ff3a;font-size:10px;border-radius:2px;">⊞ Dashboard</div>
+        <div style="padding:6px 12px;color:#aaa;font-size:10px;">☰ Review Queue</div>
+        <div style="padding:6px 12px;color:#aaa;font-size:10px;">⚙ Settings</div>
+      </div>
+      <!-- Dimmed main content behind -->
+      <div style="flex:1;padding:10px 10px 10px 150px;color:#555;">
+        <div style="font-size:10px;margin-bottom:8px;">Dashboard</div>
+        <div style="background:#161b22;height:30px;border-radius:4px;margin-bottom:6px;"></div>
+        <div style="background:#161b22;height:30px;border-radius:4px;"></div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Slide-over overlay</h3>
+      <p>A hamburger button (top-left) slides in an overlay panel. Main content stays full-width when closed. Dims content when open. Common mobile-first pattern.</p>
+    </div>
+  </div>
+
+  <!-- Option C -->
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#0d1117;padding:12px;font-family:monospace;font-size:11px;min-height:160px;display:flex;gap:0;">
+      <!-- Expanded sidebar -->
+      <div style="width:130px;background:#161b22;border-right:1px solid #b8ff3a33;display:flex;flex-direction:column;padding:10px 0;gap:4px;">
+        <div style="padding:4px 10px;color:#b8ff3a;font-weight:bold;font-size:11px;">⚡ InstaBot</div>
+        <div style="margin:6px 0;border-top:1px solid #222;"></div>
+        <div style="padding:5px 10px;background:#b8ff3a22;color:#b8ff3a;font-size:10px;border-radius:2px;">⊞ Dashboard</div>
+        <div style="padding:5px 10px;color:#aaa;font-size:10px;">☰ Review Queue</div>
+        <div style="padding:5px 10px;color:#aaa;font-size:10px;">⚙ Settings</div>
+        <div style="flex:1"></div>
+        <div style="padding:5px 10px;color:#444;font-size:10px;">‹ Collapse</div>
+      </div>
+      <!-- Main content pushed right -->
+      <div style="flex:1;padding:10px;color:#ccc;">
+        <div style="font-size:10px;color:#b8ff3a;margin-bottom:8px;">Dashboard</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:8px;">
+          <div style="background:#1a2a1a;border:1px solid #2a4a2a;border-radius:4px;padding:5px;font-size:10px;color:#66ff66;">3<br><span style="color:#555;font-size:8px;">Pending</span></div>
+          <div style="background:#161b22;border:1px solid #333;border-radius:4px;padding:5px;font-size:10px;color:#8888ff;">12<br><span style="color:#555;font-size:8px;">Total</span></div>
+        </div>
+        <div style="background:#161b22;border:1px solid #333;border-radius:4px;padding:5px;font-size:9px;color:#777;">Pipeline status...</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C — Push sidebar (always visible, collapsible)</h3>
+      <p>Sidebar is always visible and pushes main content to the right. A collapse button shrinks it to an icon strip. Best for desktop-focused dashboards.</p>
+    </div>
+  </div>
+
+</div>
