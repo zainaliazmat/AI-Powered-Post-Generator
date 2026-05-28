@@ -1,14 +1,27 @@
+import logging
 import os
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 _VALID_RENDERERS = frozenset({"pillow", "flux"})
 
 
+def _settings_renderer() -> str | None:
+    """Read image_renderer from settings; returns None on any failure."""
+    try:
+        from src.settings import get_settings
+        return get_settings()["image_renderer"]
+    except Exception as e:
+        logger.warning("settings unreachable, falling back to env: %s", e)
+        return None
+
+
 def _get_renderer_name() -> str:
-    name = os.getenv("IMAGE_RENDERER", "pillow")
+    name = _settings_renderer() or os.getenv("IMAGE_RENDERER", "pillow")
     if name not in _VALID_RENDERERS:
         raise ValueError(
-            f"Unknown IMAGE_RENDERER={name!r}. Valid options: {sorted(_VALID_RENDERERS)}"
+            f"Unknown image renderer {name!r}. Valid options: {sorted(_VALID_RENDERERS)}"
         )
     return name
 
@@ -38,4 +51,17 @@ def generate_for_post(
         from .image_gen_pillow import generate_for_post as _impl
         return _impl(post_id, carousel, brand_domain)
     from .image_gen_flux import generate_for_post as _impl
+    return _impl(post_id, carousel, brand_domain)
+
+
+def generate_for_post_with_events(
+    post_id: int,
+    carousel: dict,
+    brand_domain: str | None,
+) -> tuple[list[Path], list[dict]]:
+    renderer = _get_renderer_name()
+    if renderer == "pillow":
+        from .image_gen_pillow import generate_for_post_with_events as _impl
+        return _impl(post_id, carousel, brand_domain)
+    from .image_gen_flux import generate_for_post_with_events as _impl
     return _impl(post_id, carousel, brand_domain)

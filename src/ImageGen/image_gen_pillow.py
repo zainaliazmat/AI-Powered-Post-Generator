@@ -292,3 +292,35 @@ def generate_for_post(
     for slide in carousel.get("slides", []):
         paths.append(generate_for_slide(post_id, slide, brand_domain, og_image_url=og_image_url))
     return paths
+
+
+def generate_for_post_with_events(
+    post_id: int,
+    carousel: dict,
+    brand_domain: str | None,
+) -> tuple[list[Path], list[dict]]:
+    """Same behavior as generate_for_post, plus per-slide event metadata."""
+    og_image_url = carousel.get("og_image_url", "")
+    paths: list[Path] = []
+    events: list[dict] = []
+    for slide in carousel.get("slides", []):
+        prompt = slide.get("image_prompt", "")
+        try:
+            path = _render_slide(post_id, slide, brand_domain, og_image_url)
+            status = "ok"
+        except Exception as exc:
+            logger.error(
+                "Pillow render failed for post %d slide %d: %s — using fallback card",
+                post_id, slide.get("slide_number", 0), exc,
+            )
+            path = _fallback_card(post_id, slide)
+            status = "fallback"
+        paths.append(path)
+        events.append({
+            "idx": slide.get("slide_number", 0),
+            "prompt": prompt,
+            "enriched_prompt": None,
+            "path": str(path),
+            "status": status,
+        })
+    return paths, events

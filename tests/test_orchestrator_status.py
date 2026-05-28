@@ -192,7 +192,8 @@ def test_images_node_calls_generate_for_post_per_id(tmp_db):
                           {"slides": [], "brand_domain": "y.com"}, 8.0)
     ids = [r["id"] for r in db.get_pending_posts()]
 
-    with patch("src.ImageGen.generate_for_post", return_value=[]) as gen:
+    with patch("src.ImageGen.generate_for_post_with_events",
+               return_value=([], [])) as gen:
         with patch("src.db.save_image_paths"):
             result = _images_node(_base_state(run_id=run_id, saved_post_ids=ids))
 

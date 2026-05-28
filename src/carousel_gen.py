@@ -8,6 +8,8 @@ from pathlib import Path
 
 import litellm
 
+from .prompts import CAROUSEL_SYSTEM as _SYSTEM
+
 logger = logging.getLogger(__name__)
 
 
@@ -19,11 +21,6 @@ _EMPTY_SUMMARIES = frozenset({"comments", "", "no summary", "n/a"})
 
 _SLIDE_FIELDS = ("title", "subtitle", "body", "hashtags", "image_prompt")
 
-_SYSTEM = (
-    "You are an expert at generating structured JSON for social media carousels. "
-    "Return ONLY valid JSON. Never include markdown formatting or explanations."
-)
-
 _PROMPT_TEMPLATE = """\
 You are an expert social media strategist. Convert this news into an Instagram carousel.
 
@@ -33,18 +30,17 @@ Source: {source}
 Summary: {summary}
 
 ## SLIDE BUDGET (CRITICAL — choose based on content):
-- Complex/breaking news (major release, technical deep dive, comparison) → EXACTLY 6 slides
-- Standard news (normal feature, regular update) → 4 or 5 slides
-- Minor/small news (quick tip, minor release, simple announcement) → 2 or 3 slides
+Produce between {min_slides} and {max_slides} slides. Long, important articles should
+use more slides; short news items should use fewer. Every slide must deliver unique value
+— do not add filler. Pick the count based on how much the article actually warrants.
 
-DO NOT ADD FILLER SLIDES. Every slide must deliver unique value.
-MAXIMUM 6 SLIDES. MINIMUM 2 SLIDES.
+MINIMUM {min_slides} SLIDES. MAXIMUM {max_slides} SLIDES.
 
 ## OUTPUT FORMAT (MUST BE VALID JSON — NO OTHER TEXT):
 {{
   "brand_domain": "nvidia.com",
   "news_summary": "One powerful sentence summarizing the biggest takeaway",
-  "total_slides": <2-6>,
+  "total_slides": <within the slide budget>,
   "slides": [
     {{
       "slide_number": 1,
@@ -94,7 +90,10 @@ class ClaudeCarouselGenerator:
         self,
         cache_dir: str = "carousel_cache",
         max_retries: int = 3,
+        settings: dict | None = None,
     ):
+        from .settings import get_settings
+        self._settings = settings or get_settings()
         self.model = os.getenv("CAROUSEL_MODEL", "claude-haiku-4-5")
         self.cache_dir = Path(cache_dir)
         self.max_retries = max_retries
@@ -123,14 +122,17 @@ class ClaudeCarouselGenerator:
         path = self.cache_dir / f"{key}.json"
         path.write_text(json.dumps(carousel, indent=2, ensure_ascii=False), encoding="utf-8")
 
-    def _build_prompt(self, article: dict) -> str:
+    def _build_user_prompt(self, article: dict) -> str:
         return _PROMPT_TEMPLATE.format(
             title=_sanitize(article.get("title", "")),
             source=_sanitize(article.get("source", "")),
-            date=_sanitize(article.get("date", "")),
-            categories=_sanitize(", ".join(article.get("categories", [])) or "AI, Technology"),
             summary=_sanitize(article.get("summary", "")),
+            min_slides=self._settings["min_slides"],
+            max_slides=self._settings["max_slides"],
         )
+
+    def _build_prompt(self, article: dict) -> str:
+        return self._build_user_prompt(article)
 
     def _call_api(self, prompt: str) -> str:
         try:
@@ -173,17 +175,19 @@ class ClaudeCarouselGenerator:
                     continue
         raise ValueError(f"Could not extract JSON from response: {text[:200]}")
 
-    @staticmethod
-    def _validate_carousel(carousel: dict) -> None:
+    def _validate_carousel(self, carousel: dict) -> None:
         for field in ("news_summary", "total_slides", "slides"):
             if field not in carousel:
                 raise ValueError(f"Carousel missing required field: {field}")
+        lo, hi = self._settings["min_slides"], self._settings["max_slides"]
         total = carousel["total_slides"]
-        if not isinstance(total, int) or not (2 <= total <= 6):
-            raise ValueError(f"total_slides must be an integer 2-6, got {total!r}")
+        if not isinstance(total, int) or not (lo <= total <= hi):
+            raise ValueError(f"total_slides must be an integer {lo}..{hi}, got {total!r}")
         slides = carousel["slides"]
         if len(slides) != total:
             raise ValueError(f"Expected {total} slides, got {len(slides)}")
+        if not (lo <= len(slides) <= hi):
+            raise ValueError(f"slides count {len(slides)} outside allowed range {lo}..{hi}")
         numbers = [s.get("slide_number") for s in slides]
         if numbers != list(range(1, total + 1)):
             raise ValueError(f"slide_numbers must be 1..{total} in order, got {numbers}")

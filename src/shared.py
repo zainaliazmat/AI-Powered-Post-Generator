@@ -34,12 +34,17 @@ def polite_sleep(min_s: float = 2.0, max_s: float = 5.0) -> None:
     time.sleep(random.uniform(min_s, max_s))
 
 
-def is_within_hours(date_str: str, hours: int = 18) -> bool | None:
+def is_within_hours(date_str: str, hours: int | None = None) -> bool | None:
     """
     True  = article is within the age window
     False = article is older than the window
     None  = date is missing or unparseable (caller keeps article and flags it)
+
+    If `hours` is None, reads `time_window_hours` from pipeline_settings.
     """
+    if hours is None:
+        from .settings import get_settings  # local import to avoid cycle
+        hours = get_settings()["time_window_hours"]
     if not date_str or not date_str.strip():
         return None
     iso = parse_date(date_str)
@@ -62,8 +67,11 @@ def parse_date(date_str: str) -> str | None:
     formats = [
         "%a, %d %b %Y %H:%M:%S %z",
         "%a, %d %b %Y %H:%M:%S GMT",
+        "%Y-%m-%dT%H:%M:%S.%f%z",
         "%Y-%m-%dT%H:%M:%S%z",
+        "%Y-%m-%dT%H:%M:%S.%fZ",
         "%Y-%m-%dT%H:%M:%SZ",
+        "%Y-%m-%dT%H:%M:%S.%f",
         "%Y-%m-%dT%H:%M:%S",
         "%Y-%m-%d",
         "%B %d, %Y",
