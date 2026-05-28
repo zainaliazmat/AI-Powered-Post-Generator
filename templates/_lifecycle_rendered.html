@@ -1,0 +1,65 @@
+{# Rendered stage card. Expects `images` (event row or None) in scope. #}
+<article class="lifecycle-card{% if not images %} muted{% endif %}" data-stage="rendered">
+  <header>
+    <h3>Rendered</h3>
+    {% if images and images.duration_ms is not none %}
+      <span class="stage-meta">{{ images.duration_ms }} ms</span>
+    {% endif %}
+  </header>
+
+  {% if not images %}
+    <p class="empty-note">No data recorded for this stage.</p>
+  {% else %}
+    {% set output = images.output if images.output is mapping else {} %}
+    {% set pv = images.prompt_vars if images.prompt_vars is mapping else {} %}
+    <p class="render-meta">
+      <strong>Renderer:</strong> <code>{{ pv.get("renderer", "—") }}</code>
+      {% if pv.get("brand_domain") %}
+        <span class="dot">·</span>
+        <strong>Brand:</strong> <code>{{ pv.get("brand_domain") }}</code>
+      {% endif %}
+    </p>
+
+    {% if images.prompt_vars_malformed or images.output_malformed %}
+      <p class="malformed-note">⚠ Some event fields could not be parsed as JSON; showing raw text below.</p>
+    {% endif %}
+
+    <div class="slide-grid">
+      {% for slide in output.get("slides", []) %}
+        {% set safe_url = slide.get("path") | safe_image_url %}
+        <figure>
+          {% if safe_url %}
+            <a href="{{ safe_url }}" target="_blank" rel="noopener">
+              <img src="{{ safe_url }}" alt="Slide {{ slide.get('idx', loop.index) }}">
+            </a>
+          {% else %}
+            <code class="inert">{{ slide.get("path", "") }}</code>
+          {% endif %}
+          <figcaption>
+            <span>#{{ slide.get("idx", loop.index) }}</span>
+            <span class="slide-status slide-status-{{ slide.get('status', 'ok') }}">
+              {{ slide.get("status", "ok") }}
+            </span>
+          </figcaption>
+        </figure>
+      {% endfor %}
+    </div>
+
+    <details>
+      <summary>Per-slide prompts ({{ output.get("slides", []) | length }})</summary>
+      <div style="padding: 10px 14px;">
+        {% for slide in output.get("slides", []) %}
+          <p style="font-size: 12px; margin: 6px 0;">
+            <strong style="font-family: var(--font-mono); color: var(--text-secondary);">#{{ slide.get("idx", loop.index) }}</strong>
+            <code style="font-family: var(--font-mono); font-size: 11px; color: var(--text-primary);">{{ slide.get("prompt", "") }}</code>
+          </p>
+          {% if slide.get("enriched_prompt") %}
+            <p style="font-size: 11.5px; margin: 2px 0 10px 24px; color: var(--text-secondary);">
+              ↳ enriched: <code style="font-family: var(--font-mono);">{{ slide.get("enriched_prompt") }}</code>
+            </p>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </details>
+  {% endif %}
+</article>

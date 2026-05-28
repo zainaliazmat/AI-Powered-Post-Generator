@@ -1,0 +1,90 @@
+{# Revised stage card. Expects `revise` (event row or None), `revise_system`,
+   `revise_user_prompt`, `diff` in scope from the parent template, as well as
+   `post` (the generated_posts row). #}
+{% set rs = post.review_score %}
+{% if not revise %}
+  {% if rs is not none and rs >= 7 %}
+    <article class="lifecycle-card skipped-high-score" data-stage="revised">
+      <header><h3>Revised</h3></header>
+      <p class="skipped-note">Skipped — score ≥ 7</p>
+    </article>
+  {% else %}
+    <article class="lifecycle-card muted" data-stage="revised">
+      <header><h3>Revised</h3></header>
+      <p class="empty-note">No data recorded for this stage.</p>
+    </article>
+  {% endif %}
+{% else %}
+  {% set output = revise.output if revise.output is mapping else {} %}
+  <article class="lifecycle-card" data-stage="revised">
+    <header>
+      <h3>Revised</h3>
+      {% if revise.duration_ms is not none %}
+        <span class="stage-meta">{{ revise.duration_ms }} ms</span>
+      {% endif %}
+    </header>
+
+    <p class="revise-meta">
+      <strong>Attempts:</strong> {{ output.get("attempts", "—") }}
+      <span class="dot">·</span>
+      <strong>Fell back:</strong>
+      {% if output.get("fell_back") %}
+        <span style="color: var(--yellow); font-weight: 600;">yes</span>
+      {% else %}
+        <span style="color: var(--green); font-weight: 600;">no</span>
+      {% endif %}
+    </p>
+
+    {% if revise.prompt_vars_malformed or revise.output_malformed %}
+      <p class="malformed-note">⚠ Some event fields could not be parsed as JSON; showing raw text below.</p>
+    {% endif %}
+
+    {% if diff is mapping and diff.get("structure_changed") %}
+      <div class="structure-changed-note">
+        ⚠ Carousel structure changed during revise — slide count went from
+        <strong>{{ diff.pre_total }}</strong> to <strong>{{ diff.post_total }}</strong>.
+        Per-field diff is not meaningful.
+      </div>
+    {% elif diff %}
+      <details open>
+        <summary>Before / After diff</summary>
+        <div style="padding: 8px 12px;">
+          {% for entry in diff %}
+            <p class="diff-slide-heading">Slide {{ entry.slide_idx }}</p>
+            {% if entry.changed %}
+              <table class="diff-table">
+                <thead>
+                  <tr><th>field</th><th>before</th><th>after</th></tr>
+                </thead>
+                <tbody>
+                  {% for field, pair in entry.changed.items() %}
+                    <tr>
+                      <td class="diff-field">{{ field }}</td>
+                      <td class="diff-before">{{ pair[0] }}</td>
+                      <td class="diff-after">{{ pair[1] }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            {% else %}
+              <p class="diff-unchanged" style="color: var(--text-muted); font-size: 12px; font-style: italic; margin: 4px 0 10px;">unchanged</p>
+            {% endif %}
+          {% endfor %}
+        </div>
+      </details>
+    {% endif %}
+
+    <details>
+      <summary>System prompt (REVISE_SYSTEM)</summary>
+      <pre>{{ revise_system }}</pre>
+    </details>
+    <details>
+      <summary>User prompt (interpolated)</summary>
+      <pre>{{ revise_user_prompt }}</pre>
+    </details>
+    <details>
+      <summary>Raw post-revise carousel</summary>
+      <pre>{% if revise.output_malformed %}{{ revise.output }}{% else %}{{ output.get("post_carousel", {}) | tojson(indent=2) }}{% endif %}</pre>
+    </details>
+  </article>
+{% endif %}
