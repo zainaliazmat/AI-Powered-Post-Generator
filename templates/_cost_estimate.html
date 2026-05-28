@@ -1,0 +1,43 @@
+<div id="cost" class="cost-card">
+  {% set total = cost.total_usd %}
+
+  <div class="cost-lines">
+    <div class="cost-line">
+      <span class="cost-line-label">Carousel gen</span>
+      <span class="cost-line-value">${{ "%.4f"|format(cost.carousel_usd) }}</span>
+    </div>
+    <div class="cost-line">
+      <span class="cost-line-label">Review</span>
+      <span class="cost-line-value">${{ "%.4f"|format(cost.review_usd) }}</span>
+    </div>
+    <div class="cost-line">
+      <span class="cost-line-label">Revise</span>
+      <span class="cost-line-value">${{ "%.4f"|format(cost.revise_usd) }}</span>
+    </div>
+    <div class="cost-line">
+      <span class="cost-line-label">Images</span>
+      <span class="cost-line-value">${{ "%.4f"|format(cost.images_usd) }}</span>
+    </div>
+  </div>
+
+  <div class="cost-total-row">
+    <span class="cost-total-label">Total</span>
+    <span class="cost-total-value">${{ "%.4f"|format(total) }}</span>
+  </div>
+
+  <p class="cost-accuracy">
+    ⓘ Range: ${{ "%.2f"|format(total * 0.5) }}–${{ "%.2f"|format(total * 1.5) }}<br>
+    ±50% accuracy · Updates live
+  </p>
+
+  {% if cost.config %}
+  <div class="cost-impact">
+    <p class="cost-impact-title">Current config impact:</p>
+    <ul class="cost-impact-list">
+      <li>{{ cost.config.source_count }} source{{ 's' if cost.config.source_count != 1 else '' }} · {{ cost.config.global_max_carousels }} carousels max</li>
+      <li>{{ cost.config.min_slides }}–{{ cost.config.max_slides }} slides each</li>
+      <li>{{ cost.config.renderer_label }}</li>
+    </ul>
+  </div>
+  {% endif %}
+</div>

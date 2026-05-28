@@ -1,0 +1,195 @@
+<form hx-put="/settings" hx-target="closest .page-settings" hx-swap="outerHTML"
+      hx-trigger="submit"
+      hx-on::after-request="if (event.detail.successful) htmx.trigger('#cost', 'reload')">
+
+  <div class="setting-card">
+    <div class="setting-card-head">
+      <span class="setting-card-icon">⏱</span>
+      <div>
+        <h3 class="setting-card-title">Time &amp; Article Caps</h3>
+        <p class="setting-card-desc">Controls how far back to look and how many articles each source can contribute per run</p>
+      </div>
+    </div>
+    <div class="setting-rows">
+
+      <div class="setting-row">
+        <div class="setting-row-meta">
+          <label class="setting-label" for="time_window_hours">Time window</label>
+          <span class="setting-hint">Only articles published within this range are fetched</span>
+          {% if errors.time_window_hours %}<span class="setting-error">{{ errors.time_window_hours }}</span>{% endif %}
+        </div>
+        <div class="setting-control">
+          <input id="time_window_hours" name="time_window_hours" type="number" min="1" max="168"
+                 value="{{ settings.time_window_hours }}"
+                 hx-get="/settings/cost-estimate" hx-include="closest form" hx-target="#cost" hx-trigger="blur, change">
+          <span class="setting-unit">hrs</span>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-row-meta">
+          <label class="setting-label" for="per_source_max">Per-source article cap</label>
+          <span class="setting-hint">Max articles taken from each individual source</span>
+          {% if errors.per_source_max %}<span class="setting-error">{{ errors.per_source_max }}</span>{% endif %}
+        </div>
+        <div class="setting-control">
+          <input id="per_source_max" name="per_source_max" type="number" min="1" max="100"
+                 value="{{ settings.per_source_max }}"
+                 hx-get="/settings/cost-estimate" hx-include="closest form" hx-target="#cost" hx-trigger="blur, change">
+          <span class="setting-unit">articles</span>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-row-meta">
+          <label class="setting-label" for="global_max_carousels">Global carousel cap</label>
+          <span class="setting-hint">Maximum carousels generated per run, across all sources</span>
+          {% if errors.global_max_carousels %}<span class="setting-error">{{ errors.global_max_carousels }}</span>{% endif %}
+        </div>
+        <div class="setting-control">
+          <input id="global_max_carousels" name="global_max_carousels" type="number" min="1" max="50"
+                 value="{{ settings.global_max_carousels }}"
+                 hx-get="/settings/cost-estimate" hx-include="closest form" hx-target="#cost" hx-trigger="blur, change">
+          <span class="setting-unit">carousels</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="setting-card">
+    <div class="setting-card-head">
+      <span class="setting-card-icon">⊞</span>
+      <div>
+        <h3 class="setting-card-title">Slide Range</h3>
+        <p class="setting-card-desc">Min and max number of slides the carousel generator will produce per post</p>
+      </div>
+    </div>
+    <div class="setting-rows">
+
+      <div class="setting-row">
+        <div class="setting-row-meta">
+          <label class="setting-label" for="min_slides">Minimum slides</label>
+          <span class="setting-hint">Carousel generator always produces at least this many slides</span>
+        </div>
+        <div class="setting-control">
+          <input id="min_slides" name="min_slides" type="number" min="1" max="10"
+                 value="{{ settings.min_slides }}"
+                 hx-get="/settings/cost-estimate" hx-include="closest form" hx-target="#cost" hx-trigger="blur, change">
+          <span class="setting-unit">slides</span>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-row-meta">
+          <label class="setting-label" for="max_slides">Maximum slides</label>
+          <span class="setting-hint">Upper bound on slides per carousel</span>
+          {% if errors.min_slides or errors.max_slides %}<span class="setting-error">{{ errors.min_slides or errors.max_slides }}</span>{% endif %}
+        </div>
+        <div class="setting-control">
+          <input id="max_slides" name="max_slides" type="number" min="1" max="10"
+                 value="{{ settings.max_slides }}"
+                 hx-get="/settings/cost-estimate" hx-include="closest form" hx-target="#cost" hx-trigger="blur, change">
+          <span class="setting-unit">slides</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="setting-card">
+    <div class="setting-card-head">
+      <span class="setting-card-icon">◧</span>
+      <div>
+        <h3 class="setting-card-title">Image Renderer</h3>
+        <p class="setting-card-desc">Engine used to generate slide images — Pillow renders locally for free, Flux uses Replicate credits</p>
+      </div>
+    </div>
+    <div class="renderer-cards">
+
+      <label class="renderer-card {% if settings.image_renderer == 'pillow' %}renderer-card--active{% endif %}">
+        <input type="radio" name="image_renderer" value="pillow"
+               {% if settings.image_renderer == 'pillow' %}checked{% endif %}
+               hx-get="/settings/cost-estimate" hx-include="closest form"
+               hx-target="#cost" hx-trigger="change">
+        <div class="renderer-card-body">
+          <span class="renderer-card-name">Pillow <span class="renderer-card-tag">Local</span></span>
+          <span class="renderer-card-desc">Free · Fast · Lower quality</span>
+        </div>
+      </label>
+
+      <label class="renderer-card {% if settings.image_renderer == 'flux' %}renderer-card--active{% endif %}">
+        <input type="radio" name="image_renderer" value="flux"
+               {% if settings.image_renderer == 'flux' %}checked{% endif %}
+               hx-get="/settings/cost-estimate" hx-include="closest form"
+               hx-target="#cost" hx-trigger="change">
+        <div class="renderer-card-body">
+          <span class="renderer-card-name">Flux <span class="renderer-card-tag">Replicate</span></span>
+          <span class="renderer-card-desc">Paid · Higher quality · Needs API token</span>
+          <span class="renderer-card-cost">💰 +$0.01–$0.05 per image</span>
+        </div>
+      </label>
+
+    </div>
+  </div>
+
+  <div class="settings-actions">
+    <button class="btn btn-primary" type="submit">Save changes</button>
+    <button class="btn btn-ghost" type="button"
+            hx-post="/settings/restore-defaults"
+            hx-target="closest .page-settings"
+            hx-swap="outerHTML">Restore defaults</button>
+    <span id="save-status" class="save-status">Unsaved</span>
+  </div>
+
+  <script>
+  (function () {
+    // Renderer card active-state toggle
+    document.querySelectorAll('.renderer-card input[type="radio"]').forEach(function (radio) {
+      radio.addEventListener('change', function () {
+        document.querySelectorAll('.renderer-card').forEach(function (card) {
+          card.classList.remove('renderer-card--active');
+        });
+        radio.closest('.renderer-card').classList.add('renderer-card--active');
+      });
+    });
+
+    // Last-saved indicator
+    var savedAt = null;
+    var ticker = null;
+    var statusEl = document.getElementById('save-status');
+
+    function fmtAge(ms) {
+      var m = Math.round(ms / 60000);
+      return m < 1 ? 'just now' : m + ' min ago';
+    }
+
+    function tick() {
+      if (savedAt && statusEl) {
+        statusEl.textContent = 'Last saved: ' + fmtAge(Date.now() - savedAt);
+      }
+    }
+
+    document.body.addEventListener('htmx:afterRequest', function (e) {
+      if (e.detail.elt &&
+          e.detail.elt.matches('form') &&
+          e.detail.successful &&
+          statusEl) {
+        savedAt = Date.now();
+        statusEl.textContent = 'Last saved: just now';
+        if (!ticker) ticker = setInterval(tick, 60000);
+      }
+    });
+
+    var form = document.querySelector('form');
+    if (form && statusEl) {
+      form.addEventListener('input', function () {
+        if (savedAt !== null) {
+          statusEl.textContent = 'Unsaved · Last saved: ' + fmtAge(Date.now() - savedAt);
+        }
+      });
+    }
+  })();
+  </script>
+
+</form>
