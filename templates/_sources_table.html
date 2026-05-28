@@ -1,0 +1,8 @@
+{% for s in sources %}{% include "_source_row.html" %}{% endfor %}
+{% if not sources %}
+<div class="srcs-empty">
+  <div class="srcs-empty-mark" aria-hidden="true">⟳</div>
+  <h3 class="srcs-empty-title">No sources match this filter</h3>
+  <p class="srcs-empty-text">Clear the filters above, or click <strong>+ Add source</strong> to enrol a new feed in the fleet.</p>
+</div>
+{% endif %}

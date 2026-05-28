@@ -1,0 +1,25 @@
+<aside class="srcs-side" data-side="test-fetch">
+  <header class="srcs-side-head">
+    <div>
+      <span class="srcs-side-eyebrow">test fetch · dry run</span>
+      <h2 class="srcs-side-title">Preview</h2>
+    </div>
+    <a class="srcs-side-close" href="#" onclick="event.preventDefault(); document.getElementById('side-panel').innerHTML='';" aria-label="Close panel">×</a>
+  </header>
+
+  {% if error %}
+    <div class="srcs-error">{{ error }}</div>
+  {% elif articles %}
+    <ul class="srcs-preview">
+      {% for a in articles %}
+      <li>
+        <span class="srcs-preview-title">{{ a.title }}</span>
+        <a class="srcs-preview-url" href="{{ a.url }}" target="_blank" rel="noopener">{{ a.url }}</a>
+        {% if a.date %}<span class="srcs-preview-date">{{ a.date }}</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="srcs-empty-note">No articles returned — the source works but has nothing fresh in the window.</p>
+  {% endif %}
+</aside>

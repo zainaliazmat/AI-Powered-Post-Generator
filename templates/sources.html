@@ -1,0 +1,115 @@
+{% set active = 'sources' %}
+{% extends "base.html" %}
+{% block title %}Sources — InstaBot{% endblock %}
+{% block content %}
+
+{% set total          = sources | length %}
+{% set active_count   = sources | selectattr("status", "equalto", "active")  | list | length %}
+{% set paused_count   = sources | selectattr("status", "equalto", "paused")  | list | length %}
+{% set crashed_count  = sources | selectattr("status", "equalto", "crashed") | list | length %}
+{% set methods_in_use = sources | map(attribute="method") | reject("none") | unique | list %}
+{% set article_total  = sources | map(attribute="last_article_count") | reject("none") | sum %}
+{% set last_fetched_times = sources | map(attribute="last_fetched") | reject("none") | reject("equalto", "") | list %}
+{% set last_sync = (last_fetched_times | sort(reverse=True) | first) if last_fetched_times else None %}
+
+<section class="srcs-page">
+
+  <header class="srcs-hero">
+    <div class="srcs-hero-eyebrow">
+      <span class="srcs-hero-eyebrow-mark">NET</span>
+      <span class="srcs-hero-eyebrow-text">ingest fleet</span>
+      <span class="srcs-hero-eyebrow-dot">·</span>
+      <span class="srcs-hero-eyebrow-mode">{{ methods_in_use | length }} method{{ 's' if methods_in_use | length != 1 }} live</span>
+    </div>
+
+    <div class="srcs-hero-row">
+      <div>
+        <h1 class="srcs-hero-title">
+          Sources<span class="srcs-hero-title-accent">.</span>
+        </h1>
+        <div class="srcs-hero-meta">
+          <span><strong>{{ total }}</strong> source{{ 's' if total != 1 }}</span>
+          <span class="srcs-hero-meta-sep">/</span>
+          <span><strong>{{ active_count }}</strong> active</span>
+          <span class="srcs-hero-meta-sep">/</span>
+          <span><strong>{{ crashed_count }}</strong> crashed</span>
+          <span class="srcs-hero-meta-sep">/</span>
+          <span>last sync <strong>{{ (last_sync[:16] if last_sync else 'never') }}</strong></span>
+        </div>
+      </div>
+
+      <button class="srcs-hero-cta" data-modal-open="add-source-modal" aria-label="Add a new source">
+        <span class="srcs-hero-cta-plus">+</span> Add source
+      </button>
+    </div>
+  </header>
+
+  <div class="srcs-telemetry">
+    <div class="srcs-chip srcs-chip-active">
+      <span class="srcs-chip-label">Active</span>
+      <span class="srcs-chip-value">{{ active_count }}</span>
+      <span class="srcs-chip-sub">fetching on schedule</span>
+    </div>
+    <div class="srcs-chip srcs-chip-paused">
+      <span class="srcs-chip-label">Paused</span>
+      <span class="srcs-chip-value">{{ paused_count }}</span>
+      <span class="srcs-chip-sub">manually disabled</span>
+    </div>
+    <div class="srcs-chip srcs-chip-crashed">
+      <span class="srcs-chip-label">Crashed</span>
+      <span class="srcs-chip-value">{{ crashed_count }}</span>
+      <span class="srcs-chip-sub">{{ 'awaiting restore' if crashed_count else 'all healthy' }}</span>
+    </div>
+    <div class="srcs-chip srcs-chip-articles">
+      <span class="srcs-chip-label">Articles · last run</span>
+      <span class="srcs-chip-value">{{ '{:,}'.format(article_total) }}</span>
+      <span class="srcs-chip-sub">summed across fleet</span>
+    </div>
+  </div>
+
+  <form class="srcs-toolbar"
+        hx-get="/sources/list"
+        hx-target="#sources-tbody"
+        hx-trigger="change, input changed delay:300ms from:input[type=search]"
+        hx-swap="innerHTML">
+    <div class="srcs-search">
+      <input type="search" name="q" placeholder="search by key or url…" autocomplete="off">
+    </div>
+
+    <span class="srcs-toolbar-label">method</span>
+    <div class="srcs-segments" role="group" aria-label="Filter by method">
+      <label class="srcs-segment"><input type="radio" name="method" value="" checked> all</label>
+      <label class="srcs-segment"><input type="radio" name="method" value="rss"><span class="srcs-segment-dot srcs-segment-dot-rss"></span>rss</label>
+      <label class="srcs-segment"><input type="radio" name="method" value="rsshub"><span class="srcs-segment-dot srcs-segment-dot-rsshub"></span>rsshub</label>
+      <label class="srcs-segment"><input type="radio" name="method" value="html"><span class="srcs-segment-dot srcs-segment-dot-html"></span>html</label>
+      <label class="srcs-segment"><input type="radio" name="method" value="playwright"><span class="srcs-segment-dot srcs-segment-dot-playwright"></span>playwright</label>
+    </div>
+
+    <span class="srcs-toolbar-label">status</span>
+    <div class="srcs-segments" role="group" aria-label="Filter by status">
+      <label class="srcs-segment"><input type="radio" name="status" value="" checked> all</label>
+      <label class="srcs-segment"><input type="radio" name="status" value="active"><span class="srcs-segment-dot srcs-segment-dot-active"></span>active</label>
+      <label class="srcs-segment"><input type="radio" name="status" value="paused"><span class="srcs-segment-dot srcs-segment-dot-paused"></span>paused</label>
+      <label class="srcs-segment"><input type="radio" name="status" value="crashed"><span class="srcs-segment-dot srcs-segment-dot-crashed"></span>crashed</label>
+    </div>
+  </form>
+
+  <div class="srcs-list-head" aria-hidden="true">
+    <span></span>
+    <span>method</span>
+    <span>key</span>
+    <span>url</span>
+    <span>articles</span>
+    <span>last fetch</span>
+    <span>status</span>
+    <span style="text-align:right">actions</span>
+  </div>
+
+  <div id="sources-tbody" class="srcs-list"
+       hx-get="/sources/list" hx-trigger="sourcesUpdated from:body" hx-swap="innerHTML">{% include "_sources_table.html" %}</div>
+</section>
+
+{% include "_source_add_modal.html" %}
+
+<div id="side-panel"></div>
+{% endblock %}
