@@ -172,11 +172,20 @@ def cmd_list() -> None:
         print("No active sources. Add one with: python cli.py --add --url <url>")
         return
 
-    print(f"\n{'Key':<16} {'Method':<12} {'Last fetched':<26} URL")
-    print("─" * 80)
+    print(
+        f"\n{'Key':<16} {'Method':<12} {'Active':<8} {'Articles':<10} "
+        f"{'Last fetched':<26} URL"
+    )
+    print("─" * 100)
     for r in rows:
         last = r.get("last_fetched") or "never"
-        print(f"  {r['key']:<14} {r['method']:<12} {str(last)[:24]:<24} {r['url']}")
+        active = "yes" if r.get("is_active") else "no"
+        count = r.get("last_article_count")
+        count_str = str(count) if count is not None else "—"
+        print(
+            f"  {r['key']:<14} {r['method']:<12} {active:<8} {count_str:<10} "
+            f"{str(last)[:24]:<24} {r['url']}"
+        )
 
 
 def cmd_crashed() -> None:

@@ -1,6 +1,8 @@
 <article id="post-{{ post.id }}">
 
-  <p class="post-title">{{ post.article_title }}</p>
+  <a href="/posts/{{ post.id }}" class="post-card-link">
+    <p class="post-title">{{ post.article_title }}</p>
+  </a>
 
   <div class="post-meta">
     <a href="{{ post.article_url }}" target="_blank" rel="noopener noreferrer">↗ source</a>
@@ -22,10 +24,14 @@
     {% else %}
       <span class="badge badge-pending">{{ post.status | replace("_", " ") }}</span>
     {% endif %}
+    <span class="dot">·</span>
+    <a href="/posts/{{ post.id }}" class="post-detail-link">view detail →</a>
   </div>
 
   {% if post.first_image %}
-    <img src="{{ post.first_image }}" alt="Slide 1 preview" class="post-image">
+    <a href="/posts/{{ post.id }}" class="post-card-image-link">
+      <img src="{{ post.first_image }}" alt="Slide 1 preview" class="post-image">
+    </a>
   {% endif %}
 
   {% if post.caption %}

@@ -9,6 +9,8 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
   <link rel="stylesheet" href="/static/style.css">
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.12/dist/ext/json-enc.js"></script>
+  <script src="https://unpkg.com/htmx-ext-sse@2.2.2/sse.js"></script>
 </head>
 <body class="sidebar-layout">
   <script>
@@ -41,6 +43,16 @@
          aria-label="Database">
         <span class="sidebar-icon" aria-hidden="true">⛁</span>
         <span class="sidebar-label">Database</span>
+      </a>
+      <a href="/sources" class="sidebar-link {% if active == 'sources' %}active{% endif %}"
+         aria-label="Sources">
+        <span class="sidebar-icon" aria-hidden="true">⟳</span>
+        <span class="sidebar-label">Sources</span>
+      </a>
+      <a href="/settings" class="sidebar-link {% if active == 'settings' %}active{% endif %}"
+         aria-label="Settings">
+        <span class="sidebar-icon" aria-hidden="true">⚙</span>
+        <span class="sidebar-label">Settings</span>
       </a>
     </nav>
 
