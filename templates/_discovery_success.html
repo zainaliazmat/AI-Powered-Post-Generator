@@ -1,0 +1,35 @@
+<template id="discovery-success-template">
+  <div class="srcs-discovery-success">
+    <h3>✓ Found a working method</h3>
+    <p>__DETAIL__</p>
+    <form id="save-source-form">
+      <input type="hidden" name="config" value="__CONFIG_JSON__">
+      <label>Key
+        <input name="key" required placeholder="short-slug-id" value="__KEY__">
+      </label>
+      <label>URL
+        <input name="url" type="url" required placeholder="https://…" value="__URL__">
+      </label>
+      <button class="srcs-btn srcs-btn-primary srcs-btn-full" type="submit">Save source</button>
+    </form>
+  </div>
+</template>
+
+<script>
+  document.body.addEventListener('submit', async (e) => {
+    if (e.target.id !== 'save-source-form') return;
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const payload = {
+      key: fd.get('key'),
+      url: fd.get('url'),
+      config: JSON.parse(fd.get('config')),
+    };
+    const r = await fetch('/sources', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
+    if (r.ok) {
+      window.location.reload();
+    } else {
+      alert((await r.text()) || 'Save failed');
+    }
+  });
+</script>

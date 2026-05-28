@@ -1,0 +1,54 @@
+<ul class="srcs-tiers" id="tier-list">
+  {% for tier in ["rss", "rsshub", "html", "playwright"] %}
+  <li id="tier-{{ tier }}" class="srcs-tier pending">
+    <div class="srcs-tier-head">
+      <span class="srcs-segment-dot srcs-segment-dot-{{ tier }}" aria-hidden="true"></span>
+      <span class="srcs-tier-name">{{ tier }}</span>
+      <span class="srcs-tier-status"></span>
+    </div>
+    <ul class="probes"></ul>
+  </li>
+  {% endfor %}
+</ul>
+
+<script>
+  // Append live probe events to the matching tier card
+  document.body.addEventListener('discovery', (e) => {
+    const evt = JSON.parse(e.detail.data);
+    if (evt.type === 'tier_start') {
+      document.getElementById('tier-' + evt.tier)?.classList.replace('pending', 'running');
+    } else if (evt.type === 'probe') {
+      const probes = document.querySelector('#tier-' + evt.tier + ' .probes');
+      if (probes) {
+        const li = document.createElement('li');
+        li.className = 'probe ' + (evt.ok ? 'ok' : 'fail');
+        li.textContent = (evt.ok ? '✓ ' : '✗ ') + evt.url + ' — ' + evt.detail;
+        probes.appendChild(li);
+      }
+    } else if (evt.type === 'tier_end') {
+      const card = document.getElementById('tier-' + evt.tier);
+      card?.classList.remove('running', 'pending');
+      card?.classList.add(evt.ok ? 'won' : evt.skipped ? 'skipped' : 'failed');
+    } else if (evt.type === 'done') {
+      const target = document.getElementById('discovery-result');
+      if (!target) return;
+      const tpl = evt.config
+        ? document.getElementById('discovery-success-template')
+        : document.getElementById('discovery-failed-template');
+      const escAttr = (s) => String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;');
+      const escJsonAttr = (obj) => JSON.stringify(obj)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;');
+      const prefillUrl = (evt.config && evt.config.feed_url) || evt.url || '';
+      if (tpl) target.innerHTML = tpl.innerHTML
+        .replace('__CONFIG_JSON__', escJsonAttr(evt.config))
+        .replace('__DETAIL__', evt.detail || '')
+        .replace('__KEY__', escAttr(evt.key || ''))
+        .replace('__URL__', escAttr(prefillUrl));
+    }
+  });
+</script>
