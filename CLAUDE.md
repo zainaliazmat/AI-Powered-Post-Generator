@@ -50,7 +50,10 @@ src/
 │   ├── image_gen.py        — router: IMAGE_RENDERER env var
 │   ├── image_gen_flux.py   — Flux.1-schnell + enrich_prompt + pillow fallback
 │   └── image_gen_pillow.py — Pillow editorial renderer (1080×1350, DM Sans)
-├── db.py             — SQLite helpers
+├── db.py             — SQLite helpers (incl. `post_events`, `set_post_run_id`, `get_active_sources`, `set_source_active`, `set_source_article_count`)
+├── post_detail.py    — pure helpers for /posts/{id}: `diff_carousels`, `safe_image_url`
+├── prompts.py        — shared prompt registry: CAROUSEL_SYSTEM, REVIEW_*, REVISE_*
+├── settings.py       — runtime-editable pipeline knobs (single-row `pipeline_settings`); `get_settings`, `save_settings`, `restore_defaults`, `estimate_run_cost`
 ├── instagram.py      — M7: publish to Instagram
 ├── scheduler.py      — APScheduler jobs
 └── main.py           — FastAPI app + routes
@@ -73,11 +76,13 @@ data/
 
 | Table | Purpose |
 |-------|---------|
-| `sources` | active sources (key, url, method config) |
+| `sources` | active sources (key, url, method config, `is_active`, `last_article_count`) |
 | `crashed_sources` | sources that threw during fetch; restored with `--fix <key>` |
-| `generated_posts` | carousel JSON + score + image paths; status: `pending_review`, `approved`, `rejected`, `published`, `failed`, `image_ready` |
+| `pipeline_settings` | single row (id=1): `time_window_hours`, `per_source_max`, `global_max_carousels`, `min_slides`, `max_slides`, `image_renderer` |
+| `generated_posts` | carousel JSON + score + image paths + `run_id` link; status: `pending_review`, `approved`, `rejected`, `published`, `failed`, `image_ready` |
 | `pipeline_runs` | one row per pipeline run; status: `running`, `ok`, `failed`, `stopped`, `cancelled`; holds `pid`, `started_at`, `finished_at`, `error`, `stop_reason` |
 | `pipeline_run_steps` | seven rows per run (one per node, fixed seq 1..7); status: `pending`, `running`, `ok`, `failed`, `skipped`, `cancelled`; free-text `progress` column |
+| `post_events` | per-post lifecycle log; one row per `(post_id, stage)` where stage ∈ `review` / `revise` / `images`; holds JSON `prompt_vars` + `output` + `duration_ms`; read by `/posts/{id}` |
 | `publish_queue` | scheduled publish times |
 
 Raw articles are NOT in SQLite — `data/latest_articles.json` is the handoff file.
@@ -114,7 +119,7 @@ LOGO_DEV_TOKEN=            # Logo.dev (free key at logo.dev)
 INSTAGRAM_USERNAME=
 INSTAGRAM_PASSWORD=
 
-IMAGE_RENDERER=pillow      # or flux (costs per slide via Replicate)
+IMAGE_RENDERER=pillow      # FALLBACK only — dashboard /settings is the source of truth
 
 CAROUSEL_MODEL=claude-haiku-4-5
 REVIEW_MODEL=claude-sonnet-4-6
@@ -179,6 +184,13 @@ Dashboard routes (all gated by `require_auth`):
 - `POST /pipeline/stop` — `SIGTERM` to the active run's PID (404 if no active run)
 - `GET /pipeline/status` — returns the `_pipeline_card.html` fragment; HTMX `hx-trigger="every 2s"` while running
 - `GET /pipeline/runs/{id}` — full run-detail page
+- `GET /posts/{id}` — per-post detail page (sticky carousel preview + lifecycle log built from `post_events`); available for any status, not just `pending_review`
+- `GET /posts/{id}/lightbox?slide=N` — carousel-style lightbox; partial when `HX-Request: true`, standalone page otherwise; slide clamped to `[1, total]`
+- `POST /review/{id}/approve|reject` — accept optional `redirect_to` form field (whitelist: `/review`, `/posts/{id}`); whitelisted values produce an `HX-Redirect` header so the detail page round-trips back to `/review` while the queue card retains its in-place swap behavior
+- `GET /sources` + `GET /sources/list` — manage sources (add via streamed discovery, edit, re-probe, pause, test-fetch, delete); list fragment supports `q`, `method`, `status` filters
+- `GET /sources/discover?url=…` and `GET /sources/{key}/reprobe` — SSE streams of discovery events (`tier_start` / `probe` / `tier_end` / `done`); the final `done` echoes back `url` and a derived `key` (via `discovery.url_to_key`) so the Save-source form can auto-fill
+- `POST /sources` (JSON), `PUT /sources/{key}` (JSON), `DELETE /sources/{key}`, `POST /sources/{key}/toggle-active`, `POST /sources/{key}/restore`, `DELETE /sources/crashed/{key}`, `POST /sources/bulk-delete`, `POST /sources/{key}/test-fetch` — CRUD + read-only test-fetch (uses `fetch_source(key, dry_run=True)`)
+- `GET /settings`, `PUT /settings`, `POST /settings/restore-defaults`, `GET /settings/cost-estimate` — view + edit runtime pipeline knobs with live cost estimate
 
 `cli.py --run --run-id N` is a hidden flag (`argparse.SUPPRESS`) used by the dashboard subprocess; `python cli.py --run` (no id) keeps working and creates its own row with `trigger='cli'`.
 
@@ -186,7 +198,7 @@ Stale-run reconciliation: `db.reconcile_stale_runs` runs on FastAPI startup (`li
 
 ## Image Generation
 
-`src/ImageGen/` — router (`image_gen.py`) + two renderers; `IMAGE_RENDERER` env var selects at runtime; raises `ValueError` on unknown values.
+`src/ImageGen/` — router (`image_gen.py`) + two renderers; `pipeline_settings.image_renderer` is the source of truth, with `IMAGE_RENDERER` env var as fallback; raises `ValueError` on unknown values.
 
 - **Pillow** (`image_gen_pillow.py`): 1080×1350px; white zone + lime separator + dark og:image zone + footer; DM Sans ExtraBold (auto-downloaded); per-slide fallback to `_fallback_card`
 - **Flux** (`image_gen_flux.py`): Flux.1-schnell via Replicate; `enrich_prompt` strips cyberpunk defaults; 11s rate-limit sleep between slides; per-slide fallback to `_pillow_text_card`
@@ -197,15 +209,55 @@ Stale-run reconciliation: `db.reconcile_stale_runs` runs on FastAPI startup (`li
 
 # Project Rules
 
-## Git (STRICT)
+# Git Workflow (STRICT)
 
-Never run any git command. When done, suggest:
+## Branching
+Every new task, feature, or fix gets a new branch from the current branch before any changes.
+
+Name format: `type/short-description`
+Types: `feature` | `fix` | `refactor` | `chore`
+
+```bash
+git checkout -b feature/auth-session-refresh
+```
+
+## Commits
+After completing the task, review all modified files, then create clean focused commits.
+
+Message format: `type(scope): short summary`
+
+The message must explain what changed, why, and the impact — enough for a future maintainer to understand the decision without reading the diff.
+
+```bash
+feat(auth): implement JWT refresh token rotation
+fix(api): prevent duplicate order creation on retry
+```
+
+No unrelated files. No debug code. No WIP commits.
+
+## Push
+```bash
+git push origin feature/auth-session-refresh
+```
+
+## Before Marking Complete
+- [ ] Build passes
+- [ ] Lint and tests pass
+- [ ] No debug/temp code
+- [ ] No unrelated files in commits
+- [ ] Commits are clean and reviewable
+
+## Required End-of-Task Output
+Always close with this block:
 
 ```
-SUGGESTED COMMIT:
-git add .
-git commit -m "type(scope): message"
+Branch:  feature/auth-session-refresh
+Commits: abc1234 feat(auth): implement JWT refresh token rotation
+Push:    origin/feature/auth-session-refresh ✓
 ```
+
+If any git step fails, state exactly which step and why.
+
 
 ## Paths (STRICT)
 

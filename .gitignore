@@ -12,6 +12,7 @@ logs/*.log
 data/
 carousel_cache/
 docs/superpowers/
+.superpowers/
 debug_*.html
 debug_*.xml
 *_article.json

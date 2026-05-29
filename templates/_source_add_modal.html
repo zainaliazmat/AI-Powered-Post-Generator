@@ -1,0 +1,87 @@
+<div id="add-source-modal" class="srcs-modal" hidden>
+  <div class="srcs-modal-shell">
+    <header class="srcs-modal-head">
+      <div class="srcs-modal-head-text">
+        <span class="srcs-modal-eyebrow">
+          <span class="srcs-modal-eyebrow-mark">NEW</span>
+          enrol a source
+        </span>
+        <h2 class="srcs-modal-title">Discover &amp; add</h2>
+      </div>
+      <button class="srcs-modal-close" data-modal-close aria-label="Close">×</button>
+    </header>
+
+    <div class="srcs-modal-body">
+      <form id="discover-form" class="srcs-discover-form">
+        <input type="url" name="url" required placeholder="https://example.com/news">
+        <button class="srcs-btn srcs-btn-primary" type="submit">Discover</button>
+      </form>
+
+      <div id="discovery-events">
+        {% include "_discovery_progress.html" %}
+      </div>
+      <div id="discovery-result"></div>
+      {% include "_discovery_success.html" %}
+      {% include "_discovery_failed.html" %}
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    let activeES = null;
+
+    function resetProgress() {
+      document.querySelectorAll('#tier-list .srcs-tier').forEach(li => {
+        li.classList.remove('running', 'won', 'failed');
+        li.classList.add('pending');
+        const probes = li.querySelector('.probes');
+        if (probes) probes.innerHTML = '';
+      });
+      const result = document.getElementById('discovery-result');
+      if (result) result.innerHTML = '';
+    }
+
+    function forward(msgEvent) {
+      document.body.dispatchEvent(new CustomEvent('discovery', {
+        detail: { data: msgEvent.data },
+        bubbles: true,
+      }));
+    }
+
+    document.getElementById('discover-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const url = e.target.querySelector('[name="url"]').value.trim();
+      if (!url) return;
+
+      if (activeES) activeES.close();
+      resetProgress();
+
+      activeES = new EventSource('/sources/discover?url=' + encodeURIComponent(url));
+      activeES.addEventListener('discovery', forward);
+      activeES.addEventListener('done', (msgEvent) => {
+        forward(msgEvent);
+        activeES.close();
+        activeES = null;
+      });
+      activeES.onerror = () => {
+        if (activeES && activeES.readyState === EventSource.CLOSED) {
+          activeES = null;
+        }
+      };
+    });
+
+    // Modal open/close
+    document.body.addEventListener('click', (e) => {
+      const openSel = e.target.getAttribute && e.target.getAttribute('data-modal-open');
+      if (openSel) { document.getElementById(openSel)?.removeAttribute('hidden'); }
+      if (e.target.hasAttribute && e.target.hasAttribute('data-modal-close')) {
+        e.target.closest('.srcs-modal')?.setAttribute('hidden', '');
+      }
+      // Backdrop click closes
+      if (e.target.classList && e.target.classList.contains('srcs-modal')) {
+        e.target.setAttribute('hidden', '');
+      }
+    });
+  })();
+</script>

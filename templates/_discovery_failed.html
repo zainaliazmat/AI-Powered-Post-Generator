@@ -1,0 +1,22 @@
+<template id="discovery-failed-template">
+  <div class="srcs-discovery-failed">
+    <h3>✗ No method worked</h3>
+    <p>__DETAIL__</p>
+    <details>
+      <summary>Add manually</summary>
+      <form id="save-source-form">
+        <input type="hidden" name="config" value='{"method":"rss"}'>
+        <label>Key
+          <input name="key" required placeholder="short-slug-id" value="__KEY__">
+        </label>
+        <label>URL
+          <input name="url" type="url" required placeholder="https://…" value="__URL__">
+        </label>
+        <label>Feed URL
+          <input name="feed_url" required placeholder="https://…/feed.xml">
+        </label>
+        <button class="srcs-btn srcs-btn-primary srcs-btn-full" type="submit">Save</button>
+      </form>
+    </details>
+  </div>
+</template>

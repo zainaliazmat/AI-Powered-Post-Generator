@@ -27,6 +27,12 @@ from cli import cmd_scrape, cmd_dedup, cmd_generate  # noqa: E402
 from . import db
 from .carousel_gen import ClaudeCarouselGenerator
 from .db import save_reviewed_post
+from .prompts import (
+    REVIEW_SYSTEM as _REVIEW_SYSTEM,
+    REVIEW_USER_TEMPLATE as _REVIEW_USER,
+    REVISE_SYSTEM as _REVISE_SYSTEM,
+    REVISE_USER_TEMPLATE as _REVISE_USER,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +51,7 @@ class PipelineState(TypedDict, total=False):
     saved_post_ids: list
     images_count: int
     stop_reason: str | None
+    event_buffer: list         # [{article_hash, stage, status, prompt_vars, output, duration_ms}, ...]
 
 
 # ---------- Status helpers ----------
@@ -82,83 +89,6 @@ def _progress(run_id: int | None, node: str, text: str) -> None:
     if run_id is None:
         return
     db.update_run_step(run_id, node, progress=text)
-
-
-# ---------- Prompts ----------
-
-_REVIEW_SYSTEM = """\
-You are an adversarial content reviewer. Find weaknesses, not strengths.
-
-CRITICAL OUTPUT FORMAT (zero exceptions):
-Return ONLY a raw JSON object — no markdown, no backticks, no explanations, no conversational text.
-
-Your response must match this EXACT structure:
-{"score": 8, "issues": ["issue1"], "suggestions": ["suggestion1"]}
-
-Rules:
-- First character MUST be {, last character MUST be }
-- score: integer 1-10 (7+ means publish-ready)
-- issues: array of strings (empty if score >= 7)
-- suggestions: array of strings (empty if score >= 7)
-- Do NOT include any other fields
-
-Examples of correct output:
-Good: {"score": 9, "issues": [], "suggestions": []}
-Good: {"score": 4, "issues": ["hook weak", "CTA missing"], "suggestions": ["add urgency to title", "include specific action"]}
-
-Bad: Here is your review: {"score": 5} → REJECTED
-Bad: ```json {"score": 8}``` → REJECTED
-
-Now produce your review as RAW JSON only."""
-
-_REVIEW_USER = """\
-CRITICAL REMINDER: Your response must start with {{ and end with }}. No other text.
-
-Article: {title}
-Summary: {summary}
-
-Carousel JSON:
-{carousel_json}
-
-Score these dimensions (1-10 each, averaged for final score):
-1. Hook strength (first slide grabs attention)
-2. Factual accuracy (matches article)
-3. Slide flow & logical progression
-4. CTA quality (final slide actionability)
-5. Writing rules: ≤15 words/sentence, ≤2 emojis/slide
-
-Return ONLY the JSON object."""
-
-_REVISE_SYSTEM = """\
-You are a carousel editor. Apply ONLY content changes — never structural changes.
-
-CRITICAL CONSTRAINTS (validation happens after your response):
-- Return ONLY valid JSON. No text before or after. First char {, last char }.
-- Preserve EXACT number of slides as original. Count before editing.
-- Keep all field names: slide_number, title, subtitle, body, hashtags, image_prompt.
-- slide_number values must remain 1..N in order.
-- top-level total_slides must match original.
-
-What you MAY change:
-- Slide titles, subtitles, body text (improve clarity, fix issues)
-- Hashtags (add/remove/reorder)
-- Image prompts (refine for better generation)
-
-What you MUST NOT change:
-- Number of slides
-- Order of slides
-- Field names or structure
-
-Start your response with { and end with }."""
-
-_REVISE_USER = """\
-Original carousel (DO NOT change slide count or field names):
-{carousel_json}
-
-Apply these suggestions (improve content only, preserve structure):
-{suggestions}
-
-Return the revised carousel as raw JSON. First character {{, last character }}."""
 
 
 # ---------- LLM helpers ----------
@@ -237,7 +167,8 @@ def _call_revise_llm(carousel_json: str, suggestions_json: str, extra_hint: str 
     return _repair_json(resp.choices[0].message.content)
 
 
-def run_revise(post: dict, suggestions: list) -> dict:
+def _run_revise_with_meta(post: dict, suggestions: list) -> tuple[dict, dict]:
+    """Same behavior as run_revise; also returns {attempts, fell_back} metadata."""
     original_carousel = post.get("carousel", {})
     original_slide_count = original_carousel.get("total_slides", 0)
     carousel_json = json.dumps(original_carousel, indent=2)
@@ -260,13 +191,18 @@ def run_revise(post: dict, suggestions: list) -> dict:
                     attempt + 1, revised.get("total_slides"), original_slide_count,
                 )
                 continue
-            ClaudeCarouselGenerator._validate_carousel(revised)
-            return revised
+            ClaudeCarouselGenerator()._validate_carousel(revised)
+            return revised, {"attempts": attempt + 1, "fell_back": False}
         except Exception as e:
             logger.warning("ReviseAgent attempt %d failed: %s", attempt + 1, e)
 
     logger.warning("ReviseAgent failed after %d attempts — keeping original", _MAX_REVISE_ATTEMPTS)
-    return original_carousel
+    return original_carousel, {"attempts": _MAX_REVISE_ATTEMPTS, "fell_back": True}
+
+
+def run_revise(post: dict, suggestions: list) -> dict:
+    carousel, _meta = _run_revise_with_meta(post, suggestions)
+    return carousel
 
 
 # ---------- LangGraph nodes ----------
@@ -309,6 +245,19 @@ def _dedup_node(state: PipelineState) -> dict:
 def _generate_node(state: PipelineState) -> dict:
     run_id = state.get("run_id")
     with _step(run_id, "generate"):
+        from .settings import get_settings
+        cap = get_settings()["global_max_carousels"]
+        deduped_path = Path("data/deduped_articles.json")
+        if deduped_path.exists():
+            articles = json.loads(deduped_path.read_text(encoding="utf-8"))
+            if len(articles) > cap:
+                logger.info("Generate cap: %d → %d", len(articles), cap)
+                articles = articles[:cap]
+                deduped_path.write_text(
+                    json.dumps(articles, indent=2, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+
         cmd_generate(force_refresh=state["force"])
         posts_path = Path("data/generated_posts.json")
         posts = json.loads(posts_path.read_text(encoding="utf-8")) if posts_path.exists() else []
@@ -324,21 +273,43 @@ def _review_node(state: PipelineState) -> dict:
     with _step(run_id, "review"):
         posts = state["posts"]
         results = []
+        buffer = list(state.get("event_buffer", []))
         for i, post in enumerate(posts):
-            title = post.get("article", {}).get("title", "")[:50]
+            article = post.get("article", {})
+            carousel = post.get("carousel", {})
+            title = article.get("title", "")[:50]
             _progress(run_id, "review", f"Reviewing {i + 1}/{len(posts)} posts")
             logger.info("Reviewing post %d/%d: %s", i + 1, len(posts), title)
             print(f"  Reviewing {i + 1}/{len(posts)}: {title}...", flush=True)
+            started = time.monotonic()
             review = run_review(post)
+            duration_ms = int((time.monotonic() - started) * 1000)
             score = float(review.get("score", 5))
             results.append({
                 "post": post,
                 "score": score,
                 "suggestions": review.get("suggestions", []),
             })
+            buffer.append({
+                "article_hash": _article_hash(article),
+                "stage": "review",
+                "status": "ok",
+                "prompt_vars": {
+                    "title": article.get("title", ""),
+                    "summary": article.get("summary", ""),
+                    "carousel_json": carousel,
+                },
+                "output": {
+                    "score": review.get("score", 5),
+                    "issues": review.get("issues", []),
+                    "suggestions": review.get("suggestions", []),
+                    "raw": None,
+                },
+                "duration_ms": duration_ms,
+            })
             if i < len(posts) - 1:
                 time.sleep(1)
-        return {"review_results": results}
+        return {"review_results": results, "event_buffer": buffer}
 
 
 def _revise_node(state: PipelineState) -> dict:
@@ -346,21 +317,41 @@ def _revise_node(state: PipelineState) -> dict:
     with _step(run_id, "revise"):
         reviewed = []
         items = state["review_results"]
+        buffer = list(state.get("event_buffer", []))
         for i, item in enumerate(items):
             post = item["post"]
             score = item["score"]
-            title = post.get("article", {}).get("title", "")[:50]
+            article = post.get("article", {})
+            title = article.get("title", "")[:50]
             _progress(run_id, "revise", f"Revising {i + 1}/{len(items)} posts")
             if score < 7:
                 logger.info("  Score %.1f — revising: %s", score, title)
                 print(f"    Score {score:.0f} — revising...", flush=True)
-                revised_carousel = run_revise(post, item["suggestions"])
+                pre_carousel = post.get("carousel", {})
+                started = time.monotonic()
+                revised_carousel, meta = _run_revise_with_meta(post, item["suggestions"])
+                duration_ms = int((time.monotonic() - started) * 1000)
                 post = {**post, "carousel": revised_carousel}
+                buffer.append({
+                    "article_hash": _article_hash(article),
+                    "stage": "revise",
+                    "status": "ok",
+                    "prompt_vars": {
+                        "pre_carousel": pre_carousel,
+                        "suggestions": item["suggestions"],
+                    },
+                    "output": {
+                        "post_carousel": revised_carousel,
+                        "attempts": meta["attempts"],
+                        "fell_back": meta["fell_back"],
+                    },
+                    "duration_ms": duration_ms,
+                })
             else:
                 logger.info("  Score %.1f — approved: %s", score, title)
                 print(f"    Score {score:.0f} — approved", flush=True)
             reviewed.append({"post": post, "score": score})
-        return {"reviewed_posts": reviewed}
+        return {"reviewed_posts": reviewed, "event_buffer": buffer}
 
 
 def _route_after_review(state: PipelineState) -> str:
@@ -389,6 +380,7 @@ def _save_draft_node(state: PipelineState) -> dict:
         ]
         saved = 0
         saved_post_ids: list[int] = []
+        buffer = list(state.get("event_buffer", []))
         for item in posts_to_save:
             post = item["post"]
             article = post.get("article", {})
@@ -409,9 +401,45 @@ def _save_draft_node(state: PipelineState) -> dict:
                     "SELECT id FROM generated_posts WHERE article_hash = ?",
                     (article_hash,),
                 ).fetchone()
-            if row:
-                saved_post_ids.append(row["id"])
-        return {"saved_count": saved, "saved_post_ids": saved_post_ids}
+            if not row:
+                continue
+            post_id = row["id"]
+            saved_post_ids.append(post_id)
+
+            remaining: list[dict] = []
+            for event in buffer:
+                if event["article_hash"] != article_hash:
+                    remaining.append(event)
+                    continue
+                try:
+                    db.insert_post_event(
+                        post_id=post_id, run_id=run_id,
+                        stage=event["stage"], status=event["status"],
+                        prompt_vars=event.get("prompt_vars"),
+                        output=event.get("output"),
+                        duration_ms=event.get("duration_ms"),
+                    )
+                except Exception as e:
+                    logger.warning("insert_post_event failed: %s", e)
+            buffer = remaining
+
+            if run_id is not None:
+                try:
+                    db.set_post_run_id(post_id, run_id)
+                except Exception as e:
+                    logger.warning("set_post_run_id failed: %s", e)
+
+        if buffer:
+            logger.warning(
+                "save_draft: %d buffered event(s) had no matching saved post; dropping",
+                len(buffer),
+            )
+
+        return {
+            "saved_count": saved,
+            "saved_post_ids": saved_post_ids,
+            "event_buffer": [],
+        }
 
 
 def _images_node(state: PipelineState) -> dict:
@@ -422,7 +450,8 @@ def _images_node(state: PipelineState) -> dict:
             _progress(run_id, "images", "no posts to render")
             return {"images_count": 0}
         from .db import get_post, save_image_paths
-        from .ImageGen import generate_for_post
+        from .ImageGen import generate_for_post_with_events
+        renderer = os.getenv("IMAGE_RENDERER", "pillow")
         rendered = 0
         for i, post_id in enumerate(post_ids):
             _progress(
@@ -439,13 +468,25 @@ def _images_node(state: PipelineState) -> dict:
                 logger.warning("images: invalid carousel_json for post %s, skipping", post_id)
                 continue
             brand_domain = carousel.get("brand_domain")
-            paths = generate_for_post(
+            started = time.monotonic()
+            paths, slide_events = generate_for_post_with_events(
                 post_id=post_id,
                 carousel=carousel,
                 brand_domain=brand_domain,
             )
+            duration_ms = int((time.monotonic() - started) * 1000)
             save_image_paths(post_id, [str(p) for p in paths])
             rendered += 1
+            try:
+                db.insert_post_event(
+                    post_id=post_id, run_id=run_id,
+                    stage="images", status="ok",
+                    prompt_vars={"renderer": renderer, "brand_domain": brand_domain},
+                    output={"slides": slide_events},
+                    duration_ms=duration_ms,
+                )
+            except Exception as e:
+                logger.warning("insert_post_event(images) failed: %s", e)
         return {"images_count": rendered}
 
 

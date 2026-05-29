@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}{{ post.article_title }} — Post #{{ post.id }}{% endblock %}
+
+{% block content %}
+<header class="post-detail-topbar">
+  <a href="/review" class="back-link">← Back to Review</a>
+  <h1 class="post-detail-title">{{ post.article_title }}</h1>
+  {% if post.status in ('pending_review', 'image_ready') %}
+    <div class="post-detail-actions">
+      <form method="post" action="/review/{{ post.id }}/approve"
+            hx-post="/review/{{ post.id }}/approve"
+            hx-swap="none"
+            style="display:inline">
+        <input type="hidden" name="redirect_to" value="/review">
+        <button type="submit" class="btn btn-approve">✓ Approve</button>
+      </form>
+      <form method="post" action="/review/{{ post.id }}/reject"
+            hx-post="/review/{{ post.id }}/reject"
+            hx-swap="none"
+            style="display:inline">
+        <input type="hidden" name="redirect_to" value="/review">
+        <input type="text" name="reason" placeholder="reason (≥ 10 chars)" required minlength="10">
+        <button type="submit" class="btn btn-reject">✗ Reject</button>
+      </form>
+    </div>
+  {% endif %}
+</header>
+
+<div class="post-detail-body">
+  <aside class="post-preview" id="carousel-preview">
+    {% if slide_thumbs %}
+      {% set first_slide = slide_thumbs[0] %}
+      <figure>
+        {% if first_slide.url %}
+          <a href="/posts/{{ post.id }}/lightbox?slide=1">
+            <img src="{{ first_slide.url }}" alt="Slide 1" class="post-preview-image">
+          </a>
+        {% else %}
+          <div class="post-preview-image post-preview-placeholder">
+            <span>No image yet</span>
+          </div>
+        {% endif %}
+        <figcaption>Slide 1 of {{ slide_thumbs | length }}</figcaption>
+      </figure>
+      <nav class="thumbnail-dots" aria-label="Slide thumbnails">
+        {% for t in slide_thumbs %}
+          <a href="/posts/{{ post.id }}/lightbox?slide={{ t.idx }}"
+             class="dot{% if loop.first %} active{% endif %}"
+             aria-label="Go to slide {{ t.idx }}">{{ t.idx }}</a>
+        {% endfor %}
+      </nav>
+      <details class="slide-caption-details">
+        <summary>Slide captions</summary>
+        <ol>
+          {% for t in slide_thumbs %}
+            <li><strong>Slide {{ t.idx }}:</strong> {{ t.slide.get("caption", t.slide.get("title", "")) }}</li>
+          {% endfor %}
+        </ol>
+      </details>
+      <details class="slide-prompt-details">
+        <summary>Image prompts</summary>
+        <ol>
+          {% for t in slide_thumbs %}
+            <li><strong>Slide {{ t.idx }}:</strong> <code>{{ t.slide.get("image_prompt", "") }}</code></li>
+          {% endfor %}
+        </ol>
+      </details>
+    {% else %}
+      <div class="post-preview-placeholder">
+        <p>No slides available for this post.</p>
+      </div>
+    {% endif %}
+  </aside>
+
+  <section class="post-lifecycle" aria-label="Lifecycle log">
+    <article class="lifecycle-header">
+      <h2 class="article-title">{{ post.article_title }}</h2>
+      <p class="article-meta">
+        <a href="{{ post.article_url }}" target="_blank" rel="noopener">↗ source</a>
+        <span class="dot">·</span>
+        <span>{{ post.created_at[:16] | replace("T", " ") if post.created_at else "—" }}</span>
+        {% if post.review_score is not none %}
+          <span class="dot">·</span>
+          <span class="post-score">Score {{ post.review_score }}</span>
+        {% endif %}
+        <span class="dot">·</span>
+        <span class="badge badge-{{ post.status | replace('_', '-') }}">{{ post.status | replace("_", " ") }}</span>
+        {% if run %}
+          <span class="dot">·</span>
+          <a href="/pipeline/runs/{{ run.id }}">Run #{{ run.id }}</a>
+        {% else %}
+          <span class="dot">·</span>
+          <span class="muted">Run: —</span>
+        {% endif %}
+      </p>
+    </article>
+
+    {# ── Generated ─────────────────────────────────────────────── #}
+    <article class="lifecycle-card" data-stage="generated">
+      <header><h3>Generated</h3></header>
+      <details>
+        <summary>System prompt (CAROUSEL_SYSTEM)</summary>
+        <pre>{{ carousel_system }}</pre>
+      </details>
+      <details>
+        <summary>Final carousel JSON</summary>
+        <pre>{{ carousel | tojson(indent=2) }}</pre>
+      </details>
+    </article>
+
+    {# ── Reviewed ──────────────────────────────────────────────── #}
+    {% set review = by_stage.get("review") %}
+    {% include "_lifecycle_reviewed.html" %}
+
+    {# ── Revised ───────────────────────────────────────────────── #}
+    {% set revise = by_stage.get("revise") %}
+    {% include "_lifecycle_revised.html" %}
+
+    {# ── Rendered ──────────────────────────────────────────────── #}
+    {% set images = by_stage.get("images") %}
+    {% include "_lifecycle_rendered.html" %}
+
+    {# ── Decision ──────────────────────────────────────────────── #}
+    {% if post.reviewed_at %}
+      <article class="lifecycle-card" data-stage="{{ post.status }}">
+        <header>
+          <h3>{{ "Approved" if post.status == "approved" else ("Rejected" if post.status == "rejected" else post.status | replace("_", " ") | title) }}</h3>
+          <span class="stage-meta">{{ post.reviewed_at[:16] | replace("T", " ") }}</span>
+        </header>
+        {% if post.rejection_reason %}
+          <p style="font-size: 13px; margin: 0;"><strong style="color: var(--text-secondary); font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; display: block; margin-bottom: 4px;">Reason</strong>{{ post.rejection_reason }}</p>
+        {% endif %}
+      </article>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

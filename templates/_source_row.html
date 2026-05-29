@@ -1,0 +1,78 @@
+{% set _last = s.last_fetched %}
+<div id="source-{{ s.key }}" class="srcs-row status-{{ s.status }}">
+  <span class="srcs-row-rail" aria-hidden="true"></span>
+
+  <span class="srcs-method srcs-method-{{ s.method }}">{{ s.method }}</span>
+
+  <span class="srcs-key" title="{{ s.key }}">{{ s.key }}</span>
+
+  <a class="srcs-url" href="{{ s.url }}" target="_blank" rel="noopener" title="{{ s.url }}">
+    <span class="srcs-url-text">{{ s.url }}</span>
+    <span class="srcs-url-icon" aria-hidden="true">↗</span>
+  </a>
+
+  <span class="srcs-articles">
+    {% if s.last_article_count is not none %}
+      <span class="srcs-articles-value">{{ s.last_article_count }}</span>
+      <span class="srcs-articles-unit">art</span>
+    {% else %}
+      <span class="srcs-articles-dash">—</span>
+    {% endif %}
+  </span>
+
+  <span class="srcs-last {% if not _last %}srcs-last-dim{% endif %}">
+    {{ (_last[:16] if _last else "never") }}
+  </span>
+
+  <span class="srcs-status">
+    <span class="srcs-status-dot" aria-hidden="true"></span>
+    {{ s.status }}
+    {% if s.error_msg %}<span class="srcs-status-warn" title="{{ s.error_msg }}">⚠</span>{% endif %}
+  </span>
+
+  <span class="srcs-actions">
+    {% if s.status == "crashed" %}
+      <button class="srcs-act srcs-act-restore" title="Restore to active sources"
+              hx-post="/sources/{{ s.key }}/restore"
+              hx-target="#source-{{ s.key }}" hx-swap="outerHTML">
+        <span class="srcs-act-icon">↻</span> restore
+      </button>
+      <button class="srcs-act srcs-act-drop" title="Permanently drop this source"
+              hx-delete="/sources/crashed/{{ s.key }}"
+              hx-target="#source-{{ s.key }}" hx-swap="outerHTML"
+              hx-confirm="Permanently drop this source?">
+        <span class="srcs-act-icon">✕</span> drop
+      </button>
+    {% else %}
+      <button class="srcs-act srcs-act-edit" title="Edit configuration"
+              hx-get="/sources/{{ s.key }}/edit-panel"
+              hx-target="#side-panel" hx-swap="innerHTML">
+        <span class="srcs-act-icon">✎</span> edit
+      </button>
+      <button class="srcs-act srcs-act-reprobe" title="Re-probe to find a better method"
+              hx-get="/sources/{{ s.key }}/reprobe"
+              hx-target="#side-panel" hx-swap="innerHTML"
+              hx-ext="sse" sse-connect="/sources/{{ s.key }}/reprobe">
+        <span class="srcs-act-icon">↻</span> re-probe
+      </button>
+      <button class="srcs-act srcs-act-test" title="Dry-run fetch preview"
+              hx-post="/sources/{{ s.key }}/test-fetch"
+              hx-target="#side-panel" hx-swap="innerHTML">
+        <span class="srcs-act-icon">▶</span> test
+      </button>
+      <button class="srcs-act srcs-act-{% if s.is_active %}pause{% else %}resume{% endif %}"
+              title="{% if s.is_active %}Pause fetching{% else %}Resume fetching{% endif %}"
+              hx-post="/sources/{{ s.key }}/toggle-active"
+              hx-target="#source-{{ s.key }}" hx-swap="outerHTML">
+        <span class="srcs-act-icon">{% if s.is_active %}⏸{% else %}▷{% endif %}</span>
+        {% if s.is_active %}pause{% else %}resume{% endif %}
+      </button>
+      <button class="srcs-act srcs-act-delete" title="Delete source"
+              hx-delete="/sources/{{ s.key }}"
+              hx-target="#source-{{ s.key }}" hx-swap="outerHTML"
+              hx-confirm="Delete source '{{ s.key }}'?">
+        <span class="srcs-act-icon">✕</span>
+      </button>
+    {% endif %}
+  </span>
+</div>

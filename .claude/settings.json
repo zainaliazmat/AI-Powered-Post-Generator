@@ -20,6 +20,7 @@
       "Bash(prettier *)",
       "Bash(mkdir *)",
       "Bash(touch *)",
+      "Bash(git *)",
       "Bash(mv *)",
       "Bash(cp *)",
       "Bash(rm *)",
@@ -45,7 +46,6 @@
       "Bash(bash /home/zain-ali/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/skills/brainstorming/scripts/start-server.sh --project-dir /home/zain-ali/Documents/Scraper)"
     ],
     "deny": [
-      "Bash(git *)",
       "Bash(sudo *)",
       "Bash(su *)",
       "Bash(apt *)",

@@ -126,3 +126,48 @@ def test_generate_for_post_sleeps_between_slides_not_before_first(tmp_path):
 
     # 3 slides → sleep called 2 times (between slide 1→2 and 2→3, NOT before slide 1)
     assert mock_sleep.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# generate_for_post_with_events
+# ---------------------------------------------------------------------------
+
+def test_flux_generate_for_post_with_events_returns_enriched_prompts(tmp_path, monkeypatch):
+    from src.ImageGen import image_gen_flux as fx
+    monkeypatch.setattr(fx, "_IMAGES_DIR", tmp_path)
+    monkeypatch.setattr(fx, "_REPLICATE_RATE_LIMIT_SLEEP", 0)
+
+    def fake_run(_model, input):
+        return [f"https://example.com/{input['prompt'][:5]}.png"]
+
+    def fake_retrieve(_url, dest):
+        Path(dest).write_bytes(b"\x89PNG\r\n\x1a\n")
+        return dest, None
+
+    with patch.object(fx.replicate, "run", side_effect=fake_run), \
+         patch.object(fx.urllib.request, "urlretrieve", side_effect=fake_retrieve), \
+         patch.object(fx, "fetch_logo", return_value=None):
+        carousel = {"slides": [
+            {"slide_number": 1, "image_prompt": "neon city"},
+            {"slide_number": 2, "image_prompt": "robot arm"},
+        ]}
+        paths, events = fx.generate_for_post_with_events(7, carousel, brand_domain="openai.com")
+
+    assert len(paths) == 2 and len(events) == 2
+    assert events[0]["prompt"] == "neon city"
+    assert events[0]["enriched_prompt"] is not None
+    assert "openai" not in events[0]["enriched_prompt"].lower() or "white" in events[0]["enriched_prompt"].lower()
+    assert events[0]["status"] == "ok"
+
+
+def test_flux_event_status_is_fallback_when_replicate_raises(tmp_path, monkeypatch):
+    from src.ImageGen import image_gen_flux as fx
+    monkeypatch.setattr(fx, "_IMAGES_DIR", tmp_path)
+    monkeypatch.setattr(fx, "_REPLICATE_RATE_LIMIT_SLEEP", 0)
+
+    with patch.object(fx.replicate, "run", side_effect=RuntimeError("api down")):
+        carousel = {"slides": [{"slide_number": 1, "image_prompt": "x"}]}
+        paths, events = fx.generate_for_post_with_events(7, carousel, brand_domain=None)
+
+    assert events[0]["status"] == "fallback"
+    assert paths[0].exists()

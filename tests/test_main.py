@@ -181,6 +181,13 @@ def test_review_queue_requires_auth(client):
     assert resp.status_code == 401
 
 
+def test_review_queue_card_links_to_post_detail(client, seed_post):
+    """Queue card title/thumbnail must wrap an <a href="/posts/{id}">."""
+    resp = client.get("/review", auth=AUTH)
+    assert resp.status_code == 200
+    assert f'href="/posts/{seed_post}"' in resp.text
+
+
 def test_approve_post_returns_empty_200(client, seed_post):
     resp = client.post(f"/review/{seed_post}/approve", auth=AUTH)
     assert resp.status_code == 200

@@ -1,0 +1,38 @@
+<aside class="srcs-side" data-side="edit">
+  <header class="srcs-side-head">
+    <div>
+      <span class="srcs-side-eyebrow">edit source · {{ source.method }}</span>
+      <h2 class="srcs-side-title">{{ source.key }}</h2>
+    </div>
+    <a class="srcs-side-close" href="#" onclick="event.preventDefault(); document.getElementById('side-panel').innerHTML='';" aria-label="Close panel">×</a>
+  </header>
+
+  <form class="srcs-form" hx-put="/sources/{{ source.key }}" hx-ext="json-enc"
+        hx-target="#side-panel" hx-swap="innerHTML">
+    <label>Method
+      <select name="method">
+        {% for m in ["rss", "rsshub", "html", "playwright"] %}
+        <option value="{{ m }}" {% if source.method == m %}selected{% endif %}>{{ m }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>URL
+      <input name="url" value="{{ source.url }}">
+    </label>
+    <label>Feed URL
+      <input name="feed_url" value="{{ source.feed_url or '' }}" placeholder="(optional)">
+    </label>
+    <label>RSSHub slug
+      <input name="rsshub_slug" value="{{ source.rsshub_slug or '' }}" placeholder="(optional)">
+    </label>
+    <label>Playwright wait selector
+      <input name="pw_wait_for" value="{{ source.pw_wait_for or '' }}" placeholder="(optional CSS selector)">
+    </label>
+
+    <div class="srcs-form-row">
+      <button type="button" class="srcs-btn"
+              onclick="document.getElementById('side-panel').innerHTML=''">Cancel</button>
+      <button class="srcs-btn srcs-btn-primary" type="submit">Save changes</button>
+    </div>
+  </form>
+</aside>

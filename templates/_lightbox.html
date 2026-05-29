@@ -1,0 +1,78 @@
+<div class="lightbox" role="dialog" aria-modal="true" aria-label="Slide {{ current }} of {{ total }}">
+  {% if is_htmx %}
+    <a class="lightbox-backdrop"
+       href="/posts/{{ post.id }}#carousel-preview"
+       hx-get="/posts/{{ post.id }}"
+       hx-target="body"
+       hx-swap="outerHTML"
+       hx-trigger="click"
+       aria-label="Close"></a>
+  {% else %}
+    <a class="lightbox-backdrop"
+       href="/posts/{{ post.id }}#carousel-preview"
+       aria-label="Close"></a>
+  {% endif %}
+
+  <div class="lightbox-content">
+    <a class="lightbox-close"
+       href="/posts/{{ post.id }}#carousel-preview"
+       {% if is_htmx %}hx-get="/posts/{{ post.id }}" hx-target="body" hx-swap="outerHTML"{% endif %}
+       aria-label="Close lightbox">×</a>
+
+    <span class="lightbox-counter">{{ current }} of {{ total }}</span>
+
+    <figure class="lightbox-figure">
+      {% if image_url %}
+        <img src="{{ image_url }}" alt="Slide {{ current }}" class="lightbox-image">
+      {% else %}
+        <div class="lightbox-placeholder">No image rendered for this slide.</div>
+      {% endif %}
+      {% if slide.get("caption") or slide.get("title") %}
+        <figcaption class="lightbox-caption">
+          {{ slide.get("caption", slide.get("title", "")) }}
+        </figcaption>
+      {% endif %}
+    </figure>
+
+    <nav class="lightbox-nav" aria-label="Slide navigation">
+      {% if prev %}
+        <a class="lightbox-prev"
+           href="/posts/{{ post.id }}/lightbox?slide={{ prev }}"
+           {% if is_htmx %}hx-get="/posts/{{ post.id }}/lightbox?slide={{ prev }}"
+              hx-target=".lightbox" hx-swap="outerHTML"
+              hx-headers='{"HX-Request":"true"}'{% endif %}
+           aria-label="Previous slide">‹ Prev</a>
+      {% else %}
+        <span class="lightbox-prev disabled" aria-hidden="true">‹ Prev</span>
+      {% endif %}
+
+      {% if next %}
+        <a class="lightbox-next"
+           href="/posts/{{ post.id }}/lightbox?slide={{ next }}"
+           {% if is_htmx %}hx-get="/posts/{{ post.id }}/lightbox?slide={{ next }}"
+              hx-target=".lightbox" hx-swap="outerHTML"
+              hx-headers='{"HX-Request":"true"}'{% endif %}
+           aria-label="Next slide">Next ›</a>
+      {% else %}
+        <span class="lightbox-next disabled" aria-hidden="true">Next ›</span>
+      {% endif %}
+    </nav>
+  </div>
+
+  {% if is_htmx %}
+    <script>
+      (function() {
+        function handler(e) {
+          if (e.key === 'Escape') {
+            window.location.href = '/posts/{{ post.id }}#carousel-preview';
+          } else if (e.key === 'ArrowLeft' && {{ 'true' if prev else 'false' }}) {
+            window.location.href = '/posts/{{ post.id }}/lightbox?slide={{ prev or 1 }}';
+          } else if (e.key === 'ArrowRight' && {{ 'true' if next else 'false' }}) {
+            window.location.href = '/posts/{{ post.id }}/lightbox?slide={{ next or total }}';
+          }
+        }
+        document.addEventListener('keydown', handler, { once: false });
+      })();
+    </script>
+  {% endif %}
+</div>

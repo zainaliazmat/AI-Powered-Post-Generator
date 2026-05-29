@@ -1,0 +1,55 @@
+{# Reviewed stage card. Expects `review` (event row or None), `review_system`,
+   `review_user_prompt` in scope from the parent template. #}
+<article class="lifecycle-card{% if not review %} muted{% endif %}" data-stage="reviewed">
+  <header>
+    <h3>Reviewed</h3>
+    {% if review and review.duration_ms is not none %}
+      <span class="stage-meta">{{ review.duration_ms }} ms</span>
+    {% endif %}
+  </header>
+
+  {% if not review %}
+    <p class="empty-note">No data recorded for this stage.</p>
+  {% else %}
+    {% set output = review.output if review.output is mapping else {} %}
+    <div class="score-display">
+      <span class="score-value">{{ output.get("score", "—") }}</span>
+      <span class="score-label">Reviewer score</span>
+    </div>
+
+    {% if output.get("issues") %}
+      <p class="list-heading">Issues</p>
+      <ul class="issue-list">
+        {% for issue in output.get("issues", []) %}
+          <li>{{ issue }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+
+    {% if output.get("suggestions") %}
+      <p class="list-heading">Suggestions</p>
+      <ul class="suggestion-list">
+        {% for s in output.get("suggestions", []) %}
+          <li>{{ s }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+
+    {% if review.prompt_vars_malformed or review.output_malformed %}
+      <p class="malformed-note">⚠ Some event fields could not be parsed as JSON; showing raw text below.</p>
+    {% endif %}
+
+    <details>
+      <summary>System prompt (REVIEW_SYSTEM)</summary>
+      <pre>{{ review_system }}</pre>
+    </details>
+    <details>
+      <summary>User prompt (interpolated)</summary>
+      <pre>{{ review_user_prompt }}</pre>
+    </details>
+    <details>
+      <summary>Raw output</summary>
+      <pre>{% if review.output_malformed %}{{ review.output }}{% else %}{{ review.output | tojson(indent=2) }}{% endif %}</pre>
+    </details>
+  {% endif %}
+</article>

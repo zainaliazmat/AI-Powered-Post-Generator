@@ -200,3 +200,44 @@ def test_fallback_card_format_matches_normal_output(tmp_path):
     fallback_img = Image.open(fallback)
     assert normal_img.size == fallback_img.size
     assert normal_img.format == fallback_img.format or fallback_img.format == "PNG"
+
+
+# ---------------------------------------------------------------------------
+# generate_for_post_with_events
+# ---------------------------------------------------------------------------
+
+def test_generate_for_post_with_events_returns_tuple(tmp_path, monkeypatch):
+    from src.ImageGen import image_gen_pillow as ig
+    monkeypatch.setattr(ig, "_IMAGES_DIR", tmp_path)
+
+    carousel = {
+        "og_image_url": "",
+        "slides": [
+            {"slide_number": 1, "title": "A", "subtitle": "s", "body": "b",
+             "hashtags": "#x", "image_prompt": "p1"},
+            {"slide_number": 2, "title": "B", "subtitle": "s", "body": "b",
+             "hashtags": "#x", "image_prompt": "p2"},
+        ],
+    }
+    paths, events = ig.generate_for_post_with_events(42, carousel, brand_domain=None)
+    assert len(paths) == 2
+    assert len(events) == 2
+    assert events[0] == {
+        "idx": 1, "prompt": "p1", "enriched_prompt": None,
+        "path": str(paths[0]), "status": "ok",
+    }
+    assert events[1]["idx"] == 2
+    assert events[1]["status"] == "ok"
+
+
+def test_pillow_event_status_is_fallback_when_render_raises(tmp_path, monkeypatch):
+    from src.ImageGen import image_gen_pillow as ig
+    monkeypatch.setattr(ig, "_IMAGES_DIR", tmp_path)
+    monkeypatch.setattr(ig, "_render_slide", lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("boom")))
+
+    carousel = {"og_image_url": "", "slides": [
+        {"slide_number": 1, "title": "A", "image_prompt": "p1"},
+    ]}
+    paths, events = ig.generate_for_post_with_events(99, carousel, brand_domain=None)
+    assert events[0]["status"] == "fallback"
+    assert paths[0].exists()

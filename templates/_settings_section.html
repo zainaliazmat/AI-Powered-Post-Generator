@@ -1,0 +1,34 @@
+<section class="page-settings">
+  <header class="page-header">
+    <h1 class="page-title">Settings</h1>
+    <p class="page-subtitle">
+      Pipeline configuration
+      <span class="settings-next-run-note">ⓘ changes on next run</span>
+    </p>
+    {% if saved %}<div class="settings-banner">✓ Settings saved.</div>{% endif %}
+  </header>
+
+  <div class="settings-layout">
+    <div class="settings-main">
+      {% include "_settings_form.html" %}
+    </div>
+    <aside class="settings-sidebar">
+      <div class="cost-panel">
+        <div class="cost-panel-head">
+          <span class="cost-panel-title">Run Cost Estimate</span>
+          <span class="cost-panel-live">live</span>
+        </div>
+        {% include "_cost_estimate.html" %}
+        <div class="cost-panel-footer">
+          <button class="btn btn-ghost btn-sm"
+                  hx-get="/settings/cost-estimate"
+                  hx-include="form"
+                  hx-target="#cost">
+            Apply &amp; Estimate
+          </button>
+          <span class="cost-panel-footer-hint">Recalc without saving</span>
+        </div>
+      </div>
+    </aside>
+  </div>
+</section>

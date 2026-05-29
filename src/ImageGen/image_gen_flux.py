@@ -118,3 +118,53 @@ def generate_for_post(
             time.sleep(_REPLICATE_RATE_LIMIT_SLEEP)
         paths.append(generate_for_slide(post_id, slide, brand_domain))
     return paths
+
+
+def generate_for_post_with_events(
+    post_id: int,
+    carousel: dict,
+    brand_domain: str | None,
+) -> tuple[list[Path], list[dict]]:
+    """Same behavior as generate_for_post, plus per-slide event metadata."""
+    paths: list[Path] = []
+    events: list[dict] = []
+    for i, slide in enumerate(carousel.get("slides", [])):
+        if i > 0:
+            time.sleep(_REPLICATE_RATE_LIMIT_SLEEP)
+        raw_prompt = slide.get("image_prompt", "")
+        enriched = enrich_prompt(raw_prompt, brand_domain)
+        try:
+            output = replicate.run(
+                "black-forest-labs/flux-schnell",
+                input={
+                    "prompt": enriched,
+                    "aspect_ratio": "4:5",
+                    "output_format": "png",
+                    "num_outputs": 1,
+                },
+            )
+            image_url = str(output[0])
+            dest = _image_path(post_id, slide["slide_number"])
+            urllib.request.urlretrieve(image_url, dest)
+            if brand_domain:
+                logo = fetch_logo(brand_domain)
+                if logo:
+                    composite_badge(dest, logo)
+            path = dest
+            status = "ok"
+        except Exception as exc:
+            logger.error(
+                "Flux image gen failed for post %d slide %d: %s — falling back to text card",
+                post_id, slide.get("slide_number", 0), exc,
+            )
+            path = _pillow_text_card(post_id, slide)
+            status = "fallback"
+        paths.append(path)
+        events.append({
+            "idx": slide.get("slide_number", 0),
+            "prompt": raw_prompt,
+            "enriched_prompt": enriched,
+            "path": str(path),
+            "status": status,
+        })
+    return paths, events
