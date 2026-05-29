@@ -239,6 +239,10 @@ def cmd_generate(force_refresh: bool = False) -> None:
     print(f"Loaded {len(articles)} articles from {in_path}")
 
     gen = ClaudeCarouselGenerator()
+    cap = gen._settings.get("global_max_carousels")
+    if cap and len(articles) > cap:
+        print(f"Applying global_max_carousels cap: {len(articles)} → {cap}")
+        articles = articles[:cap]
     results = gen.batch_generate(articles, force_refresh=force_refresh)
 
     saved, skipped, failed = 0, 0, 0

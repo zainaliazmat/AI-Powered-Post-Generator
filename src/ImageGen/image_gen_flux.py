@@ -112,11 +112,7 @@ def generate_for_post(
     carousel: dict,
     brand_domain: str | None,
 ) -> list[Path]:
-    paths = []
-    for i, slide in enumerate(carousel.get("slides", [])):
-        if i > 0:
-            time.sleep(_REPLICATE_RATE_LIMIT_SLEEP)
-        paths.append(generate_for_slide(post_id, slide, brand_domain))
+    paths, _ = generate_for_post_with_events(post_id, carousel, brand_domain)
     return paths
 
 

@@ -87,6 +87,8 @@ def save_settings(updates: dict) -> PipelineSettings:
     `updates` may be a partial dict; only listed fields are changed.
     Enforces min_slides <= max_slides post-merge.
     """
+    if not updates:
+        return get_settings()
     cleaned = _validate(updates)
     # Cross-field check: min_slides <= max_slides
     current = get_settings()

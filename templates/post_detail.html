@@ -10,6 +10,7 @@
       <form method="post" action="/review/{{ post.id }}/approve"
             hx-post="/review/{{ post.id }}/approve"
             hx-swap="none"
+            hx-on::after-request="if(event.detail.failed){let e=document.getElementById('action-error');e.textContent='Error '+event.detail.xhr.status+': '+event.detail.xhr.responseText;e.style.display=''}"
             style="display:inline">
         <input type="hidden" name="redirect_to" value="/review">
         <button type="submit" class="btn btn-approve">✓ Approve</button>
@@ -17,11 +18,13 @@
       <form method="post" action="/review/{{ post.id }}/reject"
             hx-post="/review/{{ post.id }}/reject"
             hx-swap="none"
+            hx-on::after-request="if(event.detail.failed){let e=document.getElementById('action-error');e.textContent='Error '+event.detail.xhr.status+': '+event.detail.xhr.responseText;e.style.display=''}"
             style="display:inline">
         <input type="hidden" name="redirect_to" value="/review">
         <input type="text" name="reason" placeholder="reason (≥ 10 chars)" required minlength="10">
         <button type="submit" class="btn btn-reject">✗ Reject</button>
       </form>
+      <p id="action-error" role="alert" class="form-error" style="display:none"></p>
     </div>
   {% endif %}
 </header>

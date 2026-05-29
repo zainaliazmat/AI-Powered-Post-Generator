@@ -287,10 +287,7 @@ def generate_for_post(
     carousel: dict,
     brand_domain: str | None,
 ) -> list[Path]:
-    og_image_url = carousel.get("og_image_url", "")
-    paths = []
-    for slide in carousel.get("slides", []):
-        paths.append(generate_for_slide(post_id, slide, brand_domain, og_image_url=og_image_url))
+    paths, _ = generate_for_post_with_events(post_id, carousel, brand_domain)
     return paths
 
 

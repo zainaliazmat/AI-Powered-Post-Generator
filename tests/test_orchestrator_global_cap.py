@@ -13,9 +13,12 @@ def test_generate_node_slices_to_global_max_carousels(tmp_path, monkeypatch):
                  "source": "hn", "date": "2026-05-25T00:00:00Z"} for i in range(5)]
     (data_dir / "deduped_articles.json").write_text(json.dumps(articles))
 
-    # Stub cmd_generate: read the (now-truncated) deduped file and produce one post per article.
+    # Stub cmd_generate: mirrors real behavior — applies cap then produces one post per article.
     def fake_cmd_generate(force_refresh=False):
+        from src.settings import get_settings
         arts = json.loads(Path("data/deduped_articles.json").read_text())
+        cap = get_settings()["global_max_carousels"]
+        arts = arts[:cap]
         posts_out = [
             {"article": a, "carousel": {"news_summary": "x", "total_slides": 4,
                                          "slides": [{"slide_number": i + 1} for i in range(4)]}}

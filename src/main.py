@@ -869,7 +869,7 @@ def sources_list_fragment(
 
 def _test_fetch_articles(key: str) -> list[dict]:
     """Read-only test-fetch: runs fetch_source with dry_run=True (no DB writes)."""
-    from src import fetcher
+    from . import fetcher
     return fetcher.fetch_source(key, dry_run=True)[:5]
 
 
@@ -952,14 +952,9 @@ def bulk_delete_sources(payload: dict = Body(...), _: None = Depends(require_aut
 
 def _sse_format(events):
     """Wrap discovery events as SSE frames. Yields bytes."""
-    import asyncio
-    try:
-        for evt in events:
-            event_name = "done" if evt.get("type") == "done" else "discovery"
-            yield f"event: {event_name}\ndata: {json.dumps(evt)}\n\n".encode()
-    except asyncio.CancelledError:
-        _pipeline_logger.info("SSE client disconnected")
-        raise
+    for evt in events:
+        event_name = "done" if evt.get("type") == "done" else "discovery"
+        yield f"event: {event_name}\ndata: {json.dumps(evt)}\n\n".encode()
 
 
 @app.get("/sources/discover")
@@ -1008,7 +1003,7 @@ def test_fetch(key: str, request: Request, _: None = Depends(require_auth)):
 # ---------------------------------------------------------------------------
 
 def _make_settings_cost(s: dict, active_source_count: int) -> dict:
-    from src.settings import estimate_run_cost
+    from .settings import estimate_run_cost
     cost = estimate_run_cost(s)
     cost["config"] = {
         "source_count": active_source_count,
@@ -1022,8 +1017,8 @@ def _make_settings_cost(s: dict, active_source_count: int) -> dict:
 
 @app.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request, _: None = Depends(require_auth)):
-    from src.settings import get_settings
-    from src.db import get_active_sources
+    from .settings import get_settings
+    from .db import get_active_sources
     s = get_settings()
     return templates.TemplateResponse(
         request,
@@ -1044,8 +1039,8 @@ def update_settings(
     image_renderer: str = Form(...),
     _: None = Depends(require_auth),
 ):
-    from src.settings import get_settings, save_settings
-    from src.db import get_active_sources
+    from .settings import get_settings, save_settings
+    from .db import get_active_sources
     updates = {
         "time_window_hours": time_window_hours,
         "per_source_max": per_source_max,
@@ -1061,11 +1056,14 @@ def update_settings(
         save_settings(updates)
     except ValueError as e:
         errors = e.args[0] if e.args else {"_": str(e)}
+        try:
+            preview_cost = _make_settings_cost(updates, active_source_count)
+        except Exception:
+            preview_cost = _make_settings_cost(get_settings(), active_source_count)
         return templates.TemplateResponse(
             request,
             tpl,
-            {"settings": updates,
-             "cost": _make_settings_cost(get_settings(), active_source_count),
+            {"settings": updates, "cost": preview_cost,
              "errors": errors, "active": "settings"},
             status_code=422,
         )
@@ -1080,8 +1078,8 @@ def update_settings(
 
 @app.post("/settings/restore-defaults", response_class=HTMLResponse)
 def restore_settings_defaults(request: Request, _: None = Depends(require_auth)):
-    from src.settings import restore_defaults
-    from src.db import get_active_sources
+    from .settings import restore_defaults
+    from .db import get_active_sources
     s = restore_defaults()
     is_htmx = request.headers.get("HX-Request") == "true"
     tpl = "_settings_section.html" if is_htmx else "settings.html"
@@ -1104,7 +1102,7 @@ def cost_estimate_fragment(
     image_renderer: str,
     _: None = Depends(require_auth),
 ):
-    from src.settings import estimate_run_cost
+    from .settings import estimate_run_cost
     s = {"time_window_hours": time_window_hours, "per_source_max": per_source_max,
          "global_max_carousels": global_max_carousels, "min_slides": min_slides,
          "max_slides": max_slides, "image_renderer": image_renderer}

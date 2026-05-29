@@ -10,7 +10,7 @@ _VALID_RENDERERS = frozenset({"pillow", "flux"})
 def _settings_renderer() -> str | None:
     """Read image_renderer from settings; returns None on any failure."""
     try:
-        from src.settings import get_settings
+        from ..settings import get_settings
         return get_settings()["image_renderer"]
     except Exception as e:
         logger.warning("settings unreachable, falling back to env: %s", e)

@@ -163,6 +163,7 @@ class DiscoveryEvent(TypedDict, total=False):
     detail: str
     config: dict
     sample_titles: list[str]
+    skipped: bool
 
 
 def _rss_candidates(url: str) -> list[str]:

@@ -167,8 +167,13 @@ def _call_revise_llm(carousel_json: str, suggestions_json: str, extra_hint: str 
     return _repair_json(resp.choices[0].message.content)
 
 
-def _run_revise_with_meta(post: dict, suggestions: list) -> tuple[dict, dict]:
+def _run_revise_with_meta(
+    post: dict,
+    suggestions: list,
+    gen: "ClaudeCarouselGenerator | None" = None,
+) -> tuple[dict, dict]:
     """Same behavior as run_revise; also returns {attempts, fell_back} metadata."""
+    _gen = gen or ClaudeCarouselGenerator()
     original_carousel = post.get("carousel", {})
     original_slide_count = original_carousel.get("total_slides", 0)
     carousel_json = json.dumps(original_carousel, indent=2)
@@ -191,7 +196,7 @@ def _run_revise_with_meta(post: dict, suggestions: list) -> tuple[dict, dict]:
                     attempt + 1, revised.get("total_slides"), original_slide_count,
                 )
                 continue
-            ClaudeCarouselGenerator()._validate_carousel(revised)
+            _gen._validate_carousel(revised)
             return revised, {"attempts": attempt + 1, "fell_back": False}
         except Exception as e:
             logger.warning("ReviseAgent attempt %d failed: %s", attempt + 1, e)
@@ -245,19 +250,6 @@ def _dedup_node(state: PipelineState) -> dict:
 def _generate_node(state: PipelineState) -> dict:
     run_id = state.get("run_id")
     with _step(run_id, "generate"):
-        from .settings import get_settings
-        cap = get_settings()["global_max_carousels"]
-        deduped_path = Path("data/deduped_articles.json")
-        if deduped_path.exists():
-            articles = json.loads(deduped_path.read_text(encoding="utf-8"))
-            if len(articles) > cap:
-                logger.info("Generate cap: %d → %d", len(articles), cap)
-                articles = articles[:cap]
-                deduped_path.write_text(
-                    json.dumps(articles, indent=2, ensure_ascii=False),
-                    encoding="utf-8",
-                )
-
         cmd_generate(force_refresh=state["force"])
         posts_path = Path("data/generated_posts.json")
         posts = json.loads(posts_path.read_text(encoding="utf-8")) if posts_path.exists() else []
@@ -318,6 +310,8 @@ def _revise_node(state: PipelineState) -> dict:
         reviewed = []
         items = state["review_results"]
         buffer = list(state.get("event_buffer", []))
+        from .settings import get_settings
+        _gen = ClaudeCarouselGenerator(settings=get_settings())
         for i, item in enumerate(items):
             post = item["post"]
             score = item["score"]
@@ -329,7 +323,7 @@ def _revise_node(state: PipelineState) -> dict:
                 print(f"    Score {score:.0f} — revising...", flush=True)
                 pre_carousel = post.get("carousel", {})
                 started = time.monotonic()
-                revised_carousel, meta = _run_revise_with_meta(post, item["suggestions"])
+                revised_carousel, meta = _run_revise_with_meta(post, item["suggestions"], gen=_gen)
                 duration_ms = int((time.monotonic() - started) * 1000)
                 post = {**post, "carousel": revised_carousel}
                 buffer.append({
